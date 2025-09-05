@@ -1,8 +1,15 @@
 import socket
 import time
-import NamedAI as NN  
+import sys
+import os
 
-def run_client(server_addr="127.0.0.1", server_port=9000, interest_name="/dlsu/goks/cam/img1"):
+# Add parent directory to sys.path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+import NamedAI as NN
+
+
+def run_client(server_addr="127.0.0.1", server_port=9000, interest_name="/dlsu/goks/cam/capture2.jpg"):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     # Build Interest packet
