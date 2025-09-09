@@ -32,7 +32,7 @@ def run_node(bind_port=9000):
         if parsed["type"] == "interest":
             NN.process_interest(parsed, addr, sock)
         elif parsed["type"] == "data":
-            NN.process_data(parsed, sock)
+            NN.process_data(parsed, raw_packet, sock)
         else:
             print("Unknown packet type received")
 

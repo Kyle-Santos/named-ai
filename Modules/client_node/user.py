@@ -9,7 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import NamedAI as NN
 
 
-def run_client(server_addr="127.0.0.1", server_port=9000, interest_name="/dlsu/goks/cam/capture2.jpg"):
+def run_client(server_addr="127.0.0.1", server_port=9001, interest_name="/dlsu/goks/cam/capture6.jpg"):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     # Build Interest packet
@@ -25,17 +25,19 @@ def run_client(server_addr="127.0.0.1", server_port=9000, interest_name="/dlsu/g
     sock.settimeout(5)  # 5 seconds timeout
     try:
         while True:
-            data, addr = sock.recvfrom(4096)  # allow large UDP payloads
+            raw_packet, addr = sock.recvfrom(4096)  # allow large UDP payloads
             recv_time = time.time()
 
-            parsed, err = NN.parse_packet(data)
+            parsed, err = NN.parse_packet(raw_packet)
+            # print(parsed)
+
             if err:
                 print(f"[Client] Error parsing response: {err}")
                 continue
 
             if parsed["type"] == "data":
                 print(f"[Client] Got fragment from {addr} at {time.strftime('%H:%M:%S', time.localtime(recv_time))}")
-                NN.process_data(parsed, sock)  # NN module will handle reassembly
+                NN.process_data(parsed, raw_packet, sock)  # NN module will handle reassembly
 
                 # If full image assembled, break 
                 frag_flag = parsed.get("frag_flag", 0)

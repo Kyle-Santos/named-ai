@@ -4,6 +4,7 @@ import Packet_Structure as packetStruct
 import random
 import re
 import os
+import time
 
 #########################
 # Communication Module  #
@@ -21,7 +22,7 @@ def send_packet(sock, addr, packet_bytes):
     sock.sendto(packet_bytes, addr)
 
 
-def receive_packet(sock, buffer_size=1024):
+def receive_packet(sock, buffer_size=4096):
     """Receive a packet (blocking)."""
     data, addr = sock.recvfrom(buffer_size)
     return data, addr
@@ -101,16 +102,25 @@ def parse_packet(packet_bytes):
 ##################
 NODE_NAME = None
 STORAGE_PATH = ""
+INTEREST_LIFETIME = 5  # seconds
+
+
 PIT = {}  # Pending Interest Table
 
 # Content Store
 CS = {}   
-RT = {}   # Routing Table
+FIB = {}   # Forwarding Information Base 
 FT = {}   # Functions Table
 FRAG_BUFFER = {}
 
 def store_interest(name, addr):
-    PIT[name] = addr
+    if name in PIT:
+        PIT[name]["addr"].add(addr)
+    else:
+        PIT[name] = { 
+            "addr": {addr}, 
+            "time": time.time() 
+        }
 
 def store_data(name, data):
     CS[name] = data
@@ -145,14 +155,33 @@ def process_interest(packet, addr, sock):
             for resp in response:
                 send_packet(sock, addr, resp)
         else:
-            # forward interest to satisfy it
-            return 
+            if name in PIT:
+                # store interest to PIT
+                store_interest(name, addr)
+                print(PIT)
+            else:
+                store_interest(name, addr)
+                print(f"\n\n{PIT}")
+                
+                # query FIB
+                node_to_find = NODE_NAME + "/" + requested_name.split("/")[0]
+
+                # forward interest to satisfy it
+                port = FIB[node_to_find]
+
+                # Build Interest packet
+                interest_packet = build_interest_packet(name)
+                print(f"\n[DEBUG] Raw Interest Packet: {interest_packet}")
+                print(f"[DEBUG] Packet Size: {len(interest_packet)} bytes")
+
+                print(f"[Client] Sending Interest for '{name}'")
+                sock.sendto(interest_packet, ("127.0.0.1", port))
     else:
         store_interest(name, addr)
         # Forwarding could go here (not implemented yet)
 
 
-def process_data(packet, sock):
+def process_data(packet, raw_packet, sock):
     """Process Data Packet"""
     name = packet["name"]
     frag_id = packet.get("frag_id")
@@ -160,27 +189,32 @@ def process_data(packet, sock):
     more_frags = packet.get("frag_flag", 0)
 
     data = packet["data"]
+    expected_size = 0
+    received_data_size = 0
 
     # Check if this node requested the data
     if name in PIT:
         # This node didn’t request → just forward (fragment untouched)
-        # (add FIB lookup for where to forward)
-        print(f"[Forwarding] Fragment for {name}, not requested here")
-
-        store_data(name, full_data.decode()) # i think need to reassemble for caching or no?
+        for addr in PIT[name]["addr"]:
+            print(f"[Forwarding to {addr}] Packet for {name}, not requested here")
+            
+            # send 
+            send_packet(sock, addr, raw_packet)
         
-        # Deliver
-        requester = PIT.pop(name)
+        # store_data(name, full_data.decode()) # i think need to reassemble for caching or no?
+        if frag_id != 0:
+            if more_frags == 0:
+                expected_size = offset * 4000 + len(data)
+            else:
+                received_data_size += len(data)
 
-        # send 
-        responses = build_data_packet(name, data)
-        for resp in responses:
-            send_packet(sock, requester, resp)
+            if expected_size is not None and received_data_size == expected_size:
+                PIT.pop(name)
+        else:
+            PIT.pop(name)
 
-        return
-
-    # If node did request -> handle reassembly (if fragmented) -> process
-    if frag_id != 0:  # fragmented packet
+    # else if node did request -> handle reassembly (if fragmented) -> process
+    elif frag_id != 0:  # fragmented packet
         if frag_id not in FRAG_BUFFER:
             FRAG_BUFFER[frag_id] = {"name": name, "frags": {}, "expected": None}
 
