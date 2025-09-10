@@ -9,7 +9,8 @@ import NamedAI as NN
 NN.NODE_NAME = "/dlsu/goks"
 # NN.STORAGE_PATH = "captures/"
 
-NN.FIB = {
+# name, port, time
+NN.FIB = { 
     "/dlsu/goks/cam": 9000 
 }
 

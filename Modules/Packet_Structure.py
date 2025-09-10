@@ -27,6 +27,7 @@ PACKET_TYPE_DATA     = 0b01 # 1
 # Reserved type 0b0000 (0) could be for a NULL/padding packet or for future uses
 
 
+# add in name, remove from header
 ##########################################
 # Fragmentation Field (16 bits / 2 byte) #
 ##########################################
