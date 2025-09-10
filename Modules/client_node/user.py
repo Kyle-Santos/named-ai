@@ -9,7 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import NamedAI as NN
 
 
-def run_client(server_addr="127.0.0.1", server_port=9001, interest_name="/dlsu/goks/cam/capture6.jpg"):
+def run_client(server_addr="127.0.0.1", server_port=9001, interest_name="/dlsu/goks/cam/capture5.jpg"):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     # Build Interest packet
