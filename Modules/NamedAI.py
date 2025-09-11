@@ -154,6 +154,7 @@ def process_interest(packet, addr, sock):
             response = build_data_packet(name, bytes)
             for resp in response:
                 send_packet(sock, addr, resp)
+                time.sleep(0.001)  # slight delay to avoid UDP packet loss
         else:
             if name in PIT:
                 # store interest to PIT
