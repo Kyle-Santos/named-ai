@@ -11,13 +11,13 @@ NN.CS["/dlsu/goks/cam/img1"] = {
         "cachehit": 0 
     }
 
-
+NODE_PORT=9005
 NN.NODE_NAME = "/dlsu/goks/cam"
 NN.STORAGE_PATH = "captures/"
 
-def run_node(bind_port=9000):
-    sock = NN.create_udp_socket(bind_port=bind_port)
-    print(f"\033[92m{NN.NODE_NAME}\033[0m running on UDP port {bind_port}")
+def run_node():
+    sock = NN.create_udp_socket(bind_port=NODE_PORT)
+    print(f"\033[92m{NN.NODE_NAME}\033[0m running on UDP port {NODE_PORT}")
     sock.settimeout(1.0)  # 1 second timeout
 
     while True:
