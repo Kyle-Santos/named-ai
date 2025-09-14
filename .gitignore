@@ -1,2 +1,3 @@
 Modules/goks_cam_node/kagglehub
 data-preprocessing/Face_Dataset
+Modules/client_node/*.jpg

@@ -1,5 +1,6 @@
 import sys
 import os
+import socket
 
 # Add parent directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -18,9 +19,13 @@ def run_node(bind_port=9001):
 
     sock = NN.create_udp_socket(bind_port=bind_port)
     print(f"\033[92m{NN.NODE_NAME}\033[0m running on UDP port {bind_port}")
+    sock.settimeout(1.0)  # 1 second timeout
 
     while True:
-        raw_packet, addr = NN.receive_packet(sock)
+        try:
+            raw_packet, addr = NN.receive_packet(sock)
+        except socket.timeout:
+            continue  # loop back and check for Ctrl + C
         parsed, err = NN.parse_packet(raw_packet)
 
         print(f'\nPacket Received From {addr}')
@@ -39,4 +44,7 @@ def run_node(bind_port=9001):
 
 
 if __name__ == "__main__":
-    run_node()
+    try:
+        run_node()
+    except KeyboardInterrupt:
+        print("\nShutting down node...")

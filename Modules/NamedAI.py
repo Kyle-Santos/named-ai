@@ -52,18 +52,21 @@ def parse_packet(packet_bytes):
     # Remove preamble and postamble
     core = packet_bytes[len(packetStruct.PREAMBLE):-len(packetStruct.POSTAMBLE)]
 
+    # Check packet integrity through checksum
+    checksum = core[-1]
+    valid = compute_checksum(core[:-1]) == checksum
+    if not valid:
+        return None, "Checksum mismatch"
+    
     # Extract identifier
     identifier = struct.unpack(packetStruct.IDENTIFIER_FORMAT, core[0:1])[0]
 
     # Decide packet type
     pkt_type = (identifier >> 4) & 0b11  # extract PP bits
-
+    
     if pkt_type == packetStruct.PACKET_TYPE_INTEREST:
         name_len = struct.unpack(packetStruct.NAME_LENGTH_FORMAT, core[1:2])[0]
         name = core[2:2+name_len].decode()
-
-        checksum = core[-1]
-        valid = compute_checksum(core[:-1]) == checksum
 
         return {"type": "interest", "name": name, "valid": valid}, None
 
@@ -71,24 +74,23 @@ def parse_packet(packet_bytes):
         name_len = struct.unpack(packetStruct.NAME_LENGTH_FORMAT, core[1:2])[0]
         data_len = struct.unpack(packetStruct.DATA_LENGTH_FORMAT, core[2:6])[0]
 
-        frag_field = struct.unpack(packetStruct.FRAGMENTATION_FORMAT, core[6:8])[0]
-        frag_flag = (frag_field >> 15) & 0b1
-        frag_id   = (frag_field >> 8) & 0x7F
-        offset    = frag_field & 0xFF
-
-        start_idx = 8
+        start_idx = 6
         name = core[start_idx:start_idx+name_len].decode()
         data_field = core[start_idx+name_len:start_idx+name_len+data_len]
 
-        checksum = core[-1]
-        valid = compute_checksum(core[:-1]) == checksum
+        # check if name has frag notation like /dlsu/goks/cam[1:10]
+        frag_num, frag_total = None, None
+        match = re.search(r"\[(\d+):(\d+)\]$", name)
+        if match:
+            frag_num, frag_total = int(match.group(1)), int(match.group(2))
+            name = name[:match.start()]  # strip [x:y]
+
         return {
             "type": "data",
             "name": name,
             "data": data_field,
-            "frag_flag": frag_flag,
-            "frag_id": frag_id,
-            "offset": offset,
+            "frag_num": frag_num,
+            "frag_total": frag_total,
             "valid": valid
         }, None
 
@@ -185,13 +187,10 @@ def process_interest(packet, addr, sock):
 def process_data(packet, raw_packet, sock):
     """Process Data Packet"""
     name = packet["name"]
-    frag_id = packet.get("frag_id")
-    offset = packet.get("offset")
-    more_frags = packet.get("frag_flag", 0)
-
     data = packet["data"]
-    expected_size = 0
-    received_data_size = 0
+
+    frag_num = packet.get("frag_num")
+    frag_total = packet.get("frag_total")
 
     # Check if this node requested the data
     if name in PIT:
@@ -203,45 +202,43 @@ def process_data(packet, raw_packet, sock):
             send_packet(sock, addr, raw_packet)
         
         # store_data(name, full_data.decode()) # i think need to reassemble for caching or no?
-        if frag_id != 0:
-            if more_frags == 0:
-                expected_size = offset * 4000 + len(data)
-            else:
-                received_data_size += len(data)
+        if frag_total is not None:
+            if name not in FRAG_BUFFER:
+                FRAG_BUFFER[name] = {"received": 0, "expected": None}
 
-            if expected_size is not None and received_data_size == expected_size:
+            if frag_num == frag_total:
+                FRAG_BUFFER[name]["expected"] = frag_total * 4000 + len(data)
+            else:
+                FRAG_BUFFER[name]["received"] += len(data)
+
+            if FRAG_BUFFER[name]["expected"] is not None and FRAG_BUFFER[name]["received"] == FRAG_BUFFER[name]["expected"]:
                 PIT.pop(name)
+                del FRAG_BUFFER[name]
         else:
             PIT.pop(name)
 
     # else if node did request -> handle reassembly (if fragmented) -> process
-    elif frag_id != 0:  # fragmented packet
-        if frag_id not in FRAG_BUFFER:
-            FRAG_BUFFER[frag_id] = {"name": name, "frags": {}, "expected": None}
+    elif frag_total:  # fragmented packet
+        if name not in FRAG_BUFFER:
+            FRAG_BUFFER[name] = {"frags": {}, "expected": None}
 
-        FRAG_BUFFER[frag_id]["frags"][offset] = data
+        FRAG_BUFFER[name]["frags"][frag_num] = data
 
-        if more_frags == 0:
-            FRAG_BUFFER[frag_id]["expected"] = offset * 4000 + len(data)
+        if len(FRAG_BUFFER[name]["frags"]) == frag_total:
+            # Reassemble
+            full_data = b"".join(FRAG_BUFFER[name]["frags"][i] for i in range(1, frag_total+1))
 
-        total_len = FRAG_BUFFER[frag_id]["expected"]
-        if total_len is not None:
-            received = sum(len(v) for v in FRAG_BUFFER[frag_id]["frags"].values())
-            if received == total_len:
-                # Reassemble
-                ordered_offsets = sorted(FRAG_BUFFER[frag_id]["frags"].keys())
-                full_data = b"".join(FRAG_BUFFER[frag_id]["frags"][o] for o in ordered_offsets)
+            # print(full_data)
+            print(FRAG_BUFFER[name]["frags"].keys())
 
-                print(full_data)
+            # save to file
+            filename = name[1:].replace('/', '_')
+            with open(filename, "wb") as f:
+                f.write(full_data)
+            print(f"[INFO] Reassembled image written to {filename}")
 
-                # save to file
-                filename = f"{FRAG_BUFFER[frag_id]['name'][1:].replace('/', '_')}"
-                with open(filename, "wb") as f:
-                    f.write(full_data)
-                print(f"[INFO] Reassembled image written to {filename}")
-
-                # cleanup buffer
-                del FRAG_BUFFER[frag_id]
+            # cleanup buffer
+            del FRAG_BUFFER[name]
 
     else:  
         # Non-fragmented packet, node did request -> process
@@ -280,29 +277,27 @@ def build_interest_packet(name):
 
 
 def build_data_packet(name, data):
-    name_bytes = name.encode()
+    # name_bytes = name.encode()
     data_bytes = data
 
     packets = []
     fragments = fragment_data(data_bytes)  
 
-    for frag in fragments:
-        # Identifier field
+    total_frags = len(fragments)
+    for idx, frag in enumerate(fragments, start=1):
+        # only add [x:y] if more than one fragment
+        if total_frags > 1:
+            frag_name = f"{name}[{idx}:{total_frags}]".encode()
+        else:
+            frag_name = name.encode()
+
         identifier = (packetStruct.PROTOCOL_VERSION << 6) | (packetStruct.PACKET_TYPE_DATA << 4)
         header = struct.pack(packetStruct.IDENTIFIER_FORMAT, identifier)
 
-        # Name length + data length
-        header += struct.pack(packetStruct.NAME_LENGTH_FORMAT, len(name_bytes))
-        header += struct.pack(packetStruct.DATA_LENGTH_FORMAT, len(frag["chunk"]))
+        header += struct.pack(packetStruct.NAME_LENGTH_FORMAT, len(frag_name))
+        header += struct.pack(packetStruct.DATA_LENGTH_FORMAT, len(frag))
 
-        # Fragmentation field: (F << 15) | (FragID << 8) | Offset
-        frag_field = ((frag["frag_flag"] & 0b1) << 15) | ((frag["frag_id"] & 0x7F) << 8) | (frag["offset"] & 0xFF)
-        header += struct.pack(packetStruct.FRAGMENTATION_FORMAT, frag_field)
-
-        # Core packet
-        core = header + name_bytes + frag["chunk"]
-
-        # Add checksum
+        core = header + frag_name + frag
         checksum = compute_checksum(core).to_bytes(1, 'big')
 
         packet = packetStruct.PREAMBLE + core + checksum + packetStruct.POSTAMBLE
@@ -314,31 +309,6 @@ def build_data_packet(name, data):
 def fragment_data(data_bytes, max_payload=4000):
     """
     Splits data into fragments if > max_payload.
-    Returns a list of (frag_flag, frag_id, offset, chunk).
+    Returns a list of fragments
     """
-    total_len = len(data_bytes)
-
-    if total_len > max_payload:
-        frag_id = random.randint(1, 0x7F)  # random FragID
-    else: 
-        frag_id = 0
-
-    fragments = []
-    offset = 0
-    chunk_index = 0
-
-    while offset < total_len:
-        chunk = data_bytes[offset:offset + max_payload]
-        frag_flag = 1 if (offset + max_payload) < total_len else 0  # 1=more, 0=last
-
-        fragments.append({
-            "frag_flag": frag_flag,
-            "frag_id": frag_id,
-            "offset": chunk_index,
-            "chunk": chunk
-        })
-
-        offset += max_payload
-        chunk_index += 1
-
-    return fragments
+    return [data_bytes[i:i+max_payload] for i in range(0, len(data_bytes), max_payload)]

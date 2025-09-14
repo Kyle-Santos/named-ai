@@ -9,7 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import NamedAI as NN
 
 
-def run_client(server_addr="127.0.0.1", server_port=9001, interest_name="/dlsu/goks/cam/capture5.jpg"):
+def run_client(server_addr="127.0.0.1", server_port=9001, interest_name="/dlsu/goks/cam/capture8.jpg"):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     # Build Interest packet
@@ -40,10 +40,10 @@ def run_client(server_addr="127.0.0.1", server_port=9001, interest_name="/dlsu/g
                 NN.process_data(parsed, raw_packet, sock)  # NN module will handle reassembly
 
                 # If full image assembled, break 
-                frag_flag = parsed.get("frag_flag", 0)
-                frag_id = parsed.get("frag_id", 0)
-                # if frag_flag == 0 or frag_id not in NN.FRAG_BUFFER:
-                if frag_id not in NN.FRAG_BUFFER:
+                frag_num = parsed.get("frag_num", 0)
+                frag_total = parsed.get("frag_total", 0)
+
+                if frag_total != 0 and parsed.get("name") not in NN.FRAG_BUFFER:
                     rtt = recv_time - send_time
                     print(f"[Client] Round Trip Time (RTT): {rtt:.3f} seconds")
                     break

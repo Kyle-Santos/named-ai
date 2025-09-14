@@ -27,20 +27,6 @@ PACKET_TYPE_DATA     = 0b01 # 1
 # Reserved type 0b0000 (0) could be for a NULL/padding packet or for future uses
 
 
-# add in name, remove from header
-##########################################
-# Fragmentation Field (16 bits / 2 byte) #
-##########################################
-# F: Is there more Fragmentation (1 bit) - Flag if there will be more fragments
-# DDDD DDD: Fragment ID (7 bits) - A unique identifier for all fragments that belong to the same original packet.
-# OOOO OOOO: Offset (8 bits) - [0-255] The position of the fragment’s payload relative to the start of the whole packet.
-
-# Fragmentation
-NO_MORE_FRAGMENTS = 0b0 # The last fragment of a larger message or The only fragment
-MORE_FRAGMENTS = 0b1 # There are more fragments
-NO_FRAGMENTATION = 0
-
-
 ###########################
 # Field Sizes and Formats #
 ###########################
@@ -52,7 +38,6 @@ NO_FRAGMENTATION = 0
 IDENTIFIER_FORMAT = '!B' # Identifier field (1 byte)
 NAME_LENGTH_FORMAT = '!B' # Name Length field (1 byte)
 DATA_LENGTH_FORMAT = '!I'  # Data Length field (4 bytes)
-FRAGMENTATION_FORMAT = '!H' # Identifier field (2 bytes)
 CHECKSUM_FORMAT = '!B' # Checksum (FCS) field (1 byte)
 
 
@@ -71,6 +56,5 @@ FIXED_HEADER_SIZE_DATA = (
     struct.calcsize(IDENTIFIER_FORMAT) +
     struct.calcsize(NAME_LENGTH_FORMAT) +
     struct.calcsize(DATA_LENGTH_FORMAT) +
-    struct.calcsize(CHECKSUM_FORMAT) +
-    struct.calcsize(FRAGMENTATION_FORMAT)
+    struct.calcsize(CHECKSUM_FORMAT) 
 )
