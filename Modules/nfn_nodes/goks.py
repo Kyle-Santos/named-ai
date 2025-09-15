@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 
 # Add parent directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -11,7 +12,7 @@ NN.NODE_NAME = "/dlsu/goks"
 
 # name, port, time
 NN.FIB = { 
-    "/dlsu/goks/cam": 9000 
+    "/dlsu/goks/cam": { "port": 9000, "time": time.time() }
 }
 
 def run_node(bind_port=9001):

@@ -104,11 +104,8 @@ NODE_NAME = None
 STORAGE_PATH = ""
 INTEREST_LIFETIME = 5  # seconds
 
-
 PIT = {}  # Pending Interest Table
-
-# Content Store
-CS = {}   
+CS = {}   # Content Store
 FIB = {}   # Forwarding Information Base 
 FT = {}   # Functions Table
 FRAG_BUFFER = {}
