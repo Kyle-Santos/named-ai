@@ -1,28 +1,20 @@
 import sys
 import os
 import socket
-from functions import detect_face, grayscale, resize
-import time
 
 # Add parent directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import NamedAI as NN  
 
-NODE_PORT=9001
-NN.NODE_NAME = "/dlsu/goks"
-NN.NODE_ADDR = ("127.0.0.1", NODE_PORT)
+NODE_PORT=9000
+NN.NODE_NAME = "/dlsu"
 
 # name, port, time
 NN.FIB = { 
-    "/dlsu/dlsu": 9000, 
-    "/dlsu/goks/cam": { "port": 9005, "time": time.time() }
-}
-
-NN.FUNCTIONS_TABLE = {
-    "detect": detect_face,
-    "grayscale": grayscale,
-    "resize": resize,
+    "/dlsu/goks": 9001,
+    "/dlsu/andrew": 9002,
+    "/dlsu/velasco": 9003  
 }
 
 def run_node():
