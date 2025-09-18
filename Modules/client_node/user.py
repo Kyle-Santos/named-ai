@@ -14,8 +14,16 @@ DLSU_ADDR="127.0.0.1"
 CLIENT_ADDR = ("127.0.0.1", 12345)
 NN.NODE_ADDR = CLIENT_ADDR
 
-# interest_name="/dlsu/goks/cam/capture8.jpg"
+interest_name="/dlsu/goks/cam/capture8.jpg"
+
 interest_name="/dlsu/goks/detect(/dlsu/goks/cam/capture8.jpg)"
+
+#  
+
+# goks = "/dlsu/goks/detect(/dlsu/goks/cam/capture8.jpg)"
+#      = "/dlsu/goks/cam/capture8.jpg"
+
+# "/dlsu/goks/cam/capture8.jpg"
 
 def run_client():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

@@ -10,13 +10,16 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import NamedAI as NN  
 
 NODE_PORT=9001
+# Add interfaces e.g LEFT_PORT, Net1 
+
 NN.NODE_NAME = "/dlsu/goks"
 NN.NODE_ADDR = ("127.0.0.1", NODE_PORT)
 
 # name, port, time
 NN.FIB = { 
     "/dlsu/dlsu": 9000, 
-    "/dlsu/goks/cam": { "port": 9005, "time": time.time() }
+    # "/dlsu/goks/cam": { "port": 9005, "time": time.time() }
+    "/dlsu/goks/cam": 9005
 }
 
 NN.FUNCTIONS_TABLE = {
