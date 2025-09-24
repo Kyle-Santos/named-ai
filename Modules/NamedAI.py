@@ -6,6 +6,8 @@ import re
 import os
 import time
 
+
+
 #########################
 # Communication Module  #
 #########################
@@ -17,6 +19,37 @@ def create_udp_socket(bind_addr="127.0.0.1", bind_port=9000):
     return sock
 
 
+def create_interface(interfaces):
+    """
+    Given an interfaces list from the config, create UDP sockets for each face.
+
+    Args:
+        interfaces (list): Example:
+            [
+                {"face": "face0", "port": 9010},
+                {"face": "face1", "port": 9011}
+            ]
+        bind_ip (str): IP to bind (default: localhost)
+
+    Returns:
+        dict: { port: { "sock": socket, "face": face, "port": port } }
+    """
+    for interface in interfaces:
+        face = interface["face"]
+        port = interface["port"]
+
+        sock = create_udp_socket(bind_port=port)
+
+        INTERFACES[port] = {
+            "sock": sock,
+            "face": face
+        }
+
+        print(f"[INFO] Created socket for {face} on 127.0.0.1:{port}")
+
+    return INTERFACES
+
+
 def send_packet(sock, addr, packet_bytes):
     """Send a packet to a specific address via UDP."""
     sock.sendto(packet_bytes, addr)
@@ -26,6 +59,9 @@ def receive_packet(sock, buffer_size=4096):
     """Receive a packet (blocking)."""
     data, addr = sock.recvfrom(buffer_size)
     return data, addr
+
+
+
 
 
 
@@ -99,26 +135,30 @@ def parse_packet(packet_bytes):
 
 
 
+
+
+
+
 ##################
 # Storage Module #
 ##################
 NODE_NAME = None
-NODE_ADDR = None
 STORAGE_PATH = ""
 INTEREST_LIFETIME = 5  # seconds
 
+INTERFACES = {}  # port -> face, sock 
 PIT = {}  # Pending Interest Table
 CS = {}   # Content Store
 FIB = {}   # Forwarding Information Base 
 FUNCTIONS_TABLE = {}   # Functions Table
 FRAG_BUFFER = {}
 
-def store_interest(name, addr, funcs=None, waiting_for=None):
+def store_interest(name, addr, face, funcs=None, waiting_for=None):
     if name in PIT:
-        PIT[name]["addr"].add(addr)
+        PIT[name]["addr"].add( (face, addr) )
     else:
         PIT[name] = { 
-            "addr": {addr}, 
+            "addr": {(face, addr)}, 
             "time": time.time(),
             "funcs": funcs,
             "waiting_for": waiting_for,
@@ -129,6 +169,10 @@ def store_data(name, data):
 
 def lookup_content(name):
     return CS.get(name, None)
+
+
+
+
 
 
 #####################

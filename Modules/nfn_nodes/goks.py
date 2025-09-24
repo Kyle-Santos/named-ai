@@ -3,58 +3,63 @@ import os
 import socket
 from functions import detect_face, grayscale, resize
 import time
+import json
 
 # Add parent directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import NamedAI as NN  
 
-NODE_PORT=9001
-# Add interfaces e.g LEFT_PORT, Net1 
+# -----------------------------
+# Load Config
+# -----------------------------
+with open("node_config.json", "r") as f:
+    config = json.load(f)
 
-NN.NODE_NAME = "/dlsu/goks"
-NN.NODE_ADDR = ("127.0.0.1", NODE_PORT)
+NODE_NAME = "/dlsu/goks"
+node_config = next(n for n in config["nodes"] if n["name"] == NODE_NAME)
 
-# name, port, time
-NN.FIB = { 
-    "/dlsu/dlsu": 9000, 
-    # "/dlsu/goks/cam": { "port": 9005, "time": time.time() }
-    "/dlsu/goks/cam": 9005
-}
+NN.NODE_NAME = node_config["name"]
+NODE_IP = node_config["ip"]
 
-NN.FUNCTIONS_TABLE = {
-    "detect": detect_face,
-    "grayscale": grayscale,
-    "resize": resize,
-}
+# Build FIB from config (if it exists)
+NN.FIB = node_config.get("FIB", {})
 
+# multiple interfaces supported
+# CLI interaction
+
+
+# Create UDP sockets for each face/interface
+INTERFACES = NN.create_interface(node_config["interfaces"])  # list of {"face": "face_name", "port": port_number}
+
+print(f"\033[92m{NN.NODE_NAME}\033[0m running with faces:")
+
+# -----------------------------
+# Run node loop
+# -----------------------------
 def run_node():
-
-    sock = NN.create_udp_socket(bind_port=NODE_PORT)
-    print(f"\033[92m{NN.NODE_NAME}\033[0m running on UDP port {NODE_PORT}")
-    sock.settimeout(1.0)  # 1 second timeout
-
     while True:
-        try:
-            raw_packet, addr = NN.receive_packet(sock)
-        except socket.timeout:
-            continue  # loop back and check for Ctrl + C
-        parsed, err = NN.parse_packet(raw_packet)
+        for face, sock in INTERFACES.items():
+            # Wait for incoming packet
+            try:
+                raw_packet, addr = NN.receive_packet(sock)
+            except socket.timeout:
+                continue
 
-        print(f'\nPacket Received From {addr}')
-        # print(parsed)
+            parsed, err = NN.parse_packet(raw_packet)
 
-        if err:
-            print(f"Error: {err}")
-            continue
-        
-        if parsed["type"] == "interest":
-            NN.process_interest(parsed, addr, sock)
-        elif parsed["type"] == "data":
-            NN.process_data(parsed, raw_packet, sock)
-        else:
-            print("Unknown packet type received")
+            print(f'\nPacket Received on {face} (from {addr})')
 
+            if err:
+                print(f"Error: {err}")
+                continue
+
+            if parsed["type"] == "interest":
+                NN.process_interest(parsed, addr, sock, incoming_face=face)
+            elif parsed["type"] == "data":
+                NN.process_data(parsed, raw_packet, sock, incoming_face=face)
+            else:
+                print("Unknown packet type received")
 
 if __name__ == "__main__":
     try:
