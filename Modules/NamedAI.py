@@ -11,8 +11,14 @@ import time
 #########################
 # Communication Module  #
 #########################
+IP_ADDR = "127.0.0.1"
 
-def create_udp_socket(bind_addr="127.0.0.1", bind_port=9000):
+def set_ip_addr(ip_addr):
+    """Set the IP address for all interfaces (if needed)."""
+    global IP_ADDR
+    IP_ADDR = ip_addr
+
+def create_udp_socket(bind_addr=IP_ADDR, bind_port=9000):
     """Create and bind a UDP socket for communication."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((bind_addr, bind_port))
@@ -46,7 +52,7 @@ def create_interface(interfaces):
             "port": port
         }
 
-        print(f"[INFO] Created socket for {face} on 127.0.0.1:{port}")
+        print(f"[INFO] Created socket for {face} on {IP_ADDR}:{port}")
 
     return INTERFACES
 
@@ -342,7 +348,7 @@ def process_data(packet, raw_packet, sock):
 
                     # cleanup buffer
                     del FRAG_BUFFER[name]
-
+                    return True
             else:  
                 # Non-fragmented packet, node did request -> process
                 requester = PIT.pop(name)
@@ -368,6 +374,8 @@ def process_data(packet, raw_packet, sock):
                 del FRAG_BUFFER[name]
         else:
             PIT.pop(name)
+
+        return False
 
 
 def process_name_request(name) -> bytes:

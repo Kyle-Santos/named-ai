@@ -1,8 +1,8 @@
 {
+    "ip": "127.0.0.1",
     "nodes": [
         {
             "name": "client",
-            "ip": "127.0.0.1",
             "interfaces": [
                 { "face": "face0", "port": 9001 }
             ],
@@ -14,7 +14,6 @@
         
         {
             "name": "/dlsu",
-            "ip": "127.0.0.1",
             "interfaces": [
                 { "face": "face0", "port": 9008 },
                 { "face": "face1", "port": 9009 }
@@ -26,7 +25,6 @@
 
         {
             "name": "/dlsu/goks",
-            "ip": "127.0.0.1",
             "interfaces": [
                 { "face": "face0", "port": 9010 },
                 { "face": "face1", "port": 9011 }
@@ -39,7 +37,6 @@
 
         {
             "name": "/dlsu/goks/cam",
-            "ip": "127.0.0.1",
             "interfaces": [
                 { "face": "face0", "port": 9012 }
             ],
