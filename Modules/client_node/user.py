@@ -2,26 +2,40 @@ import socket
 import time
 import sys
 import os
+import json
 
 # Add parent directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import NamedAI as NN
 
-DLSU_PORT=9001
-DLSU_ADDR="127.0.0.1"
-
-CLIENT_ADDR = ("127.0.0.1", 12345)
-NN.NODE_ADDR = CLIENT_ADDR
-
 interest_name="/dlsu/goks/cam/capture8.jpg"
+# interest_name="/dlsu/goks/detect(/dlsu/goks/cam/capture8.jpg)"
 
-interest_name="/dlsu/goks/detect(/dlsu/goks/cam/capture8.jpg)"
+# -----------------------------
+# Load Config
+# -----------------------------
+with open("../node_config.json", "r") as f:
+    config = json.load(f)
+
+NODE_NAME = "client"
+node_config = next(n for n in config["nodes"] if n["name"] == NODE_NAME)
+
+NN.NODE_NAME = node_config["name"]
+NODE_IP = node_config["ip"]
+
+# Build FIB from config (if it exists)
+NN.FIB = node_config.get("FIB", {})
+
+# Create UDP sockets for each face/interface
+INTERFACES = NN.create_interface(node_config["interfaces"])  # { face: { "sock": socket, "face": face, "port": port } }
+
+print(f"\033[92m{NN.NODE_NAME}\033[0m running with faces: {list(INTERFACES.keys())}") 
 
 
 def run_client():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(CLIENT_ADDR)  # listen on port 12345
+    entry = INTERFACES["face0"]
+    sock = entry["sock"]
 
     # Build Interest packet
     interest_packet = NN.build_interest_packet(interest_name)
@@ -30,9 +44,10 @@ def run_client():
 
     send_time = time.time()
     print(f"[Client] Sending Interest for '{interest_name}' at {time.strftime('%H:%M:%S', time.localtime(send_time))}")
-    sock.sendto(interest_packet, (DLSU_ADDR, DLSU_PORT))
+    face, dest_port = NN.lookup_fib(interest_name)
+    sock.sendto(interest_packet, ("127.0.0.1", dest_port))
 
-    NN.store_interest(interest_name, CLIENT_ADDR)
+    NN.store_interest(interest_name, None, ("127.0.0.1", entry["port"]))
 
     # Collect responses (could be fragmented)
     sock.settimeout(5)  # 5 seconds timeout

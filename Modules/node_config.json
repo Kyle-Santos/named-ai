@@ -5,7 +5,23 @@
             "ip": "127.0.0.1",
             "interfaces": [
                 { "face": "face0", "port": 9001 }
-            ]
+            ],
+            "FIB": {
+                "/dlsu": { "face": "face0", "port": 9008 },
+                "/dlsu/goks": { "face": "face0", "port": 9010 }
+            }
+        },
+        
+        {
+            "name": "/dlsu",
+            "ip": "127.0.0.1",
+            "interfaces": [
+                { "face": "face0", "port": 9008 },
+                { "face": "face1", "port": 9009 }
+            ],
+            "FIB": {
+                "/dlsu/goks": { "face": "face1", "port": 9010 }
+            }
         },
 
         {
@@ -16,8 +32,8 @@
                 { "face": "face1", "port": 9011 }
             ],
             "FIB": {
-                "/dlsu/dlsu": "face0",
-                "/dlsu/goks/cam": "face1"
+                "/dlsu": { "face": "face0", "port": 9009 },
+                "/dlsu/goks/cam": { "face": "face1", "port": 9012 }
             }
         },
 
