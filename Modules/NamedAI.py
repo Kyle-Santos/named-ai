@@ -6,6 +6,14 @@ import re
 import os
 import time
 
+LOGS = []
+
+def log(level, message, path=""):
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    entry = {"level": level, "message": message, "path": path, "timestamp": timestamp}
+    LOGS.append(entry)
+    print(f"[{timestamp}] [{level}] {message}" + (f" {path}" if path else ""))
+
 
 
 #########################
@@ -52,7 +60,7 @@ def create_interface(interfaces):
             "port": port
         }
 
-        print(f"[INFO] Created socket for {face} on {IP_ADDR}:{port}")
+        log("INFO", f"Created socket for {face} on {IP_ADDR}:{port}")
 
     return INTERFACES
 
@@ -282,7 +290,7 @@ def process_interest(packet, addr, sock, interface):
                 print(f"\n[DEBUG] Raw Interest Packet: {interest_packet}")
                 print(f"[DEBUG] Packet Size: {len(interest_packet)} bytes")
 
-                print(f"[Client] Sending Interest for '{name}'")
+                log("INFO", f"Sending Interest for '{name}'")
                 send_packet(INTERFACES[forward_face]["sock"], dest_addr, interest_packet)
         
         # store interest to PIT
@@ -302,7 +310,7 @@ def process_data(packet, raw_packet, sock):
     frag_total = packet.get("frag_total")
 
     if name not in PIT:
-        print(f"[WARN] No PIT entry for {name}, dropping")
+        log("WARN", f"No PIT entry for {name}, dropping")
         return
     
     pit_entry = PIT[name]
@@ -344,7 +352,7 @@ def process_data(packet, raw_packet, sock):
                     filename = name[1:].replace('/', '_')
                     with open(filename, "wb") as f:
                         f.write(full_data)
-                    print(f"[INFO] Reassembled image written to {filename}")
+                    log("INFO", f"Reassembled image written to {filename}")
 
                     # cleanup buffer
                     del FRAG_BUFFER[name]
@@ -356,7 +364,7 @@ def process_data(packet, raw_packet, sock):
         # === Forwarding case ===
         # This node didn’t request → just forward (fragment untouched)
         else:
-            print(f"[Forwarding to {PIT_MAPPING[face]}] Packet for {name}, not requested here")
+            log("INFO", f"Forwarding packet for {name} to {PIT_MAPPING[face]}")
 
             # send
             send_packet(sock, PIT_MAPPING[face], raw_packet)
