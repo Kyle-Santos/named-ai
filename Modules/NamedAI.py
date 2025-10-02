@@ -167,7 +167,8 @@ PIT = {}  # Pending Interest Table
 PIT_MAPPING = {}  # receiving_face -> addr of sender
 
 CS = {}   # Content Store
-FIB = {}   # Forwarding Information Base 
+FIB = {}   # Forwarding Information Base
+FACES = []  # List of faces
 FUNCTIONS_TABLE = {}   # Functions Table
 FRAG_BUFFER = {}
 

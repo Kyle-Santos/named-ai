@@ -23,6 +23,7 @@ def load_node_config(config_path: str, node_name: str):
     NN.NODE_NAME = node_config["name"]
     NN.STORAGE_PATH = node_config.get("storage", "")  # default "" if not present
     NN.FIB = node_config.get("FIB", {})
+    NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
     return node_config
 
 
