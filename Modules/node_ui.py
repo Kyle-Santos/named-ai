@@ -48,7 +48,7 @@ class NodeMonitor(QWidget):
         self.interest_name = interest_name
         self.setWindowTitle("NDN Node Monitor")
         self.resize(1100, 720)
-        with open('Modules/styles.qss', 'r') as f:
+        with open('styles.qss', 'r') as f:
             self.setStyleSheet(f.read())
         root = QVBoxLayout(self); root.setContentsMargins(14, 14, 14, 80); root.setSpacing(10)
         split = QHBoxLayout(); split.setSpacing(10)
@@ -58,7 +58,7 @@ class NodeMonitor(QWidget):
         leftlay = QVBoxLayout(self.left); leftlay.setContentsMargins(12, 12, 12, 12); leftlay.setSpacing(8)
         title_logs = QLabel("DEBUG LOGS")
         title_logs.setStyleSheet(f"color:{SUCCESS}; font-weight:700;")
-        self.ns_label = QLabel("/dlsu/goks")
+        self.ns_label = QLabel(self.node_name)
         self.ns_label.setStyleSheet("background:#0b1020; border:1px solid #1f2a44; border-radius:6px; padding:2px 6px; color:#9ca3af;")
         tt = QHBoxLayout(); tt.addWidget(title_logs); tt.addStretch(1); tt.addWidget(self.ns_label)
         leftlay.addLayout(tt)
@@ -219,7 +219,8 @@ class NodeMonitor(QWidget):
     def show_structure(self, which: str):
         obj = None
         if which == "pit":
-            obj = getattr(NN, "PIT", {})
+            obj = NN.INTERFACES
+            # obj = getattr(NN, "INTERFACES", {})
         elif which == "fib":
             obj = getattr(NN, "FIB", {})
         elif which == "cs":
@@ -250,5 +251,6 @@ def main():
     win = NodeMonitor(start_mode, node_name, interest)
     win.show()
     sys.exit(app.exec_())
+
 if __name__ == "__main__":
     main()

@@ -40,7 +40,7 @@
             "interfaces": [
                 { "face": "face0", "port": 9012 }
             ],
-            "storage": "captures/"
+            "storage": "goks_cam_node/captures/"
         }
     ]
 }
