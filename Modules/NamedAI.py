@@ -159,7 +159,7 @@ def parse_packet(packet_bytes):
 ##################
 NODE_NAME = None
 STORAGE_PATH = ""
-INTEREST_LIFETIME = 5  # seconds
+INTEREST_LIFETIME = 30  # seconds
 
 INTERFACES = {}  # port -> face, sock, port 
 
@@ -176,12 +176,18 @@ def store_interest(name, face, addr, funcs=None, waiting_for=None):
     """Store an Interest in the PIT."""
     PIT_MAPPING[face] = addr
 
+    current_time = time.time()
+    
     if name in PIT:
-        PIT[name]["interface"].add(face)
+        # Interest aggregation: add new face to existing entry
+        PIT[name]["interface"].add(face) 
+
+        # Update timestamp to the most recent Interest
+        PIT[name]["time"] = current_time
     else:
         PIT[name] = { 
             "interface": {face}, 
-            "time": time.time(),
+            "time": current_time,
             "funcs": funcs,
             "waiting_for": waiting_for,
         }
@@ -223,6 +229,31 @@ def lookup_fib(name: str):
     return interface_to_forward
 
 
+def is_interest_expired(name):
+    """Check if an Interest has expired."""
+    if name not in PIT:
+        return True
+    
+    elapsed = time.time() - PIT[name]["time"]
+    remaining = INTEREST_LIFETIME - elapsed
+    return max(0, remaining) <= 0
+
+def cleanup_expired_pit_entries():
+    """Remove PIT entries that have exceeded their lifetime."""
+    current_time = time.time()
+    expired_names = []
+
+    for name, entry in PIT.items():
+        age = current_time - entry["time"]
+        
+        if age > INTEREST_LIFETIME:
+            expired_names.append(name)
+            print(f"[PIT Timeout] Interest '{name}' expired after {age:.2f}s")
+
+    for name in expired_names:
+        PIT.pop(name)
+        
+    return len(expired_names)
 
 #####################
 # Processing Module #
@@ -357,6 +388,9 @@ def process_data(packet, raw_packet, sock):
 
                     # cleanup buffer
                     del FRAG_BUFFER[name]
+
+                    PIT.pop(name)
+
                     return True
             else:  
                 # Non-fragmented packet, node did request -> process

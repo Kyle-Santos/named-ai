@@ -108,6 +108,9 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
     # Start sender thread
     threading.Thread(target=sender, args=(gui_callback,), daemon=True).start()
 
+    # Start PIT cleanup thread
+    threading.Thread(target=pit_cleanup_worker, args=(gui_callback,), daemon=True).start()
+
     # Keep alive
     try:
         while True:
@@ -134,7 +137,7 @@ def run_client(node_name: str, interest_name: str, config_path=CONFIG_PATH, gui_
     print(f"[DEBUG] Packet Size: {len(interest_packet)} bytes")
 
     send_time = time.time()
-    msg = f"[Client] Sending Interest for '{interest_name}' at {time.strftime('%H:%M:%S', time.localtime(send_time))}"
+    msg = f"Sending Interest for '{interest_name}' at {time.strftime('%H:%M:%S', time.localtime(send_time))}"
     print(msg)
     if gui_callback:
         gui_callback("INFO", msg)
@@ -152,14 +155,17 @@ def run_client(node_name: str, interest_name: str, config_path=CONFIG_PATH, gui_
                              args=(face, entry, send_time, result_queue, gui_callback))
         t.start()
 
+    # Start PIT cleanup thread
+    threading.Thread(target=pit_cleanup_worker, args=(gui_callback,), daemon=True).start()
+
     try:
         rtt = result_queue.get(timeout=5)
-        msg = f"[Client] Interest satisfied, RTT: {rtt:.4f}s"
+        msg = f"Interest satisfied, RTT: {rtt:.4f}s"
         print(msg)
         if gui_callback:
             gui_callback("SUCCESS", msg)
     except queue.Empty:
-        msg = "[Client] Timeout, no Data received"
+        msg = "Timeout, no Data received"
         print(msg)
         if gui_callback:
             gui_callback("WARN", msg)
@@ -186,7 +192,7 @@ def receiver_client(face, entry, send_time, result_queue, gui_callback=None):
 
             if parsed["type"] == "data":
                 recv_time = time.time()
-                msg = f"[Client] Got fragment from {addr} at {time.strftime('%H:%M:%S', time.localtime(recv_time))}"
+                msg = f"Got fragment from {addr} at {time.strftime('%H:%M:%S', time.localtime(recv_time))}"
                 print(msg)
                 if gui_callback:
                     gui_callback("INFO", msg)
@@ -198,9 +204,40 @@ def receiver_client(face, entry, send_time, result_queue, gui_callback=None):
                 if complete and frag_total != 0 and parsed.get("name") not in NN.FRAG_BUFFER:
                     rtt = recv_time - send_time
                     result_queue.put(rtt)
-                    return
+                    # return
         except Exception as e:
             msg = f"[Receiver {face}] Error: {e}"
+            print(msg)
+            if gui_callback:
+                gui_callback("ERROR", msg)
+
+
+def pit_cleanup_worker(gui_callback=None):
+    """Background thread to periodically clean up expired PIT entries."""
+    CLEANUP_INTERVAL = 5  # seconds
+    
+    while True:
+        time.sleep(CLEANUP_INTERVAL)
+        
+        try:
+            expired_count = NN.cleanup_expired_pit_entries()
+            
+            if expired_count > 0:
+                msg = f"[PIT Cleanup] Removed {expired_count} expired Interest(s)"
+                print(msg)
+                if gui_callback:
+                    gui_callback("INFO", msg)
+            
+            # Optional: Print PIT stats
+            # stats = NN.get_pit_stats()
+            # if stats["total"] > 0:
+            #     msg = f"[PIT Stats] Total: {stats['total']}, Active: {stats['active']}, Expired: {stats['expired']}"
+            #     print(msg)
+            #     if gui_callback:
+            #         gui_callback("INFO", msg)
+                    
+        except Exception as e:
+            msg = f"[PIT Cleanup] Error: {e}"
             print(msg)
             if gui_callback:
                 gui_callback("ERROR", msg)
@@ -432,18 +469,28 @@ if GUI_AVAILABLE:
                     return
                 
                 if raw.lower().startswith("send interest"):
-                    parts = raw.split(" ", 2)
+                    parts = raw.split(" ")
                     if len(parts) < 3:
                         self.append_log("WARN", "Usage: send interest /path/name")
                         return
                     name = parts[2].strip()
                     self.append_log("INFO", f"Sending interest for {name} ...")
                     
-                    def send_client():
-                        run_client(self.node_name, name, gui_callback=self.append_log)
+                    interest_packet = NN.build_interest_packet(name)
+                    print(f"[DEBUG] Raw Interest Packet: {interest_packet}")
+                    print(f"[DEBUG] Packet Size: {len(interest_packet)} bytes")
+
+                    send_time = time.time()
+                    msg = f"[Client] Sending Interest for '{name}' at {time.strftime('%H:%M:%S', time.localtime(send_time))}"
+                    print(msg)
                     
-                    t = threading.Thread(target=send_client, daemon=True)
-                    t.start()
+                    self.append_log("INFO", msg)
+
+                    face, dest_port = NN.lookup_fib(name)
+                    NN.INTERFACES["face0"]["sock"].sendto(interest_packet, (NN.IP_ADDR, dest_port))
+
+                    NN.store_interest(name, None, (NN.IP_ADDR, NN.INTERFACES["face0"]["port"]))
+
                     return
                 
                 self.append_log("WARN", f"Unknown command: {raw}")
