@@ -1,0 +1,46 @@
+{
+    "ip": "127.0.0.1",
+    "nodes": [
+        {
+            "name": "client",
+            "interfaces": [
+                { "face": "face0", "port": 9001 }
+            ],
+            "FIB": {
+                "/dlsu": { "face": "face0", "port": 9008 },
+                "/dlsu/goks": { "face": "face0", "port": 9010 }
+            }
+        },
+        
+        {
+            "name": "/dlsu",
+            "interfaces": [
+                { "face": "face0", "port": 9008 },
+                { "face": "face1", "port": 9009 }
+            ],
+            "FIB": {
+                "/dlsu/goks": { "face": "face1", "port": 9010 }
+            }
+        },
+
+        {
+            "name": "/dlsu/goks",
+            "interfaces": [
+                { "face": "face0", "port": 9010 },
+                { "face": "face1", "port": 9011 }
+            ],
+            "FIB": {
+                "/dlsu": { "face": "face0", "port": 9009 },
+                "/dlsu/goks/cam": { "face": "face1", "port": 9012 }
+            }
+        },
+
+        {
+            "name": "/dlsu/goks/cam",
+            "interfaces": [
+                { "face": "face0", "port": 9012 }
+            ],
+            "storage": "goks_cam_node/captures/"
+        }
+    ]
+}

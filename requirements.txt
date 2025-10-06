@@ -7,3 +7,4 @@ tqdm
 numpy
 scikit-learn  # for evaluation metrics
 matplotlib    # for visualization
+PyQt5

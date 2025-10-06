@@ -6,15 +6,63 @@ import re
 import os
 import time
 
+LOGS = []
+
+def log(level, message, path=""):
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    entry = {"level": level, "message": message, "path": path, "timestamp": timestamp}
+    LOGS.append(entry)
+    print(f"[{timestamp}] [{level}] {message}" + (f" {path}" if path else ""))
+
+
+
 #########################
 # Communication Module  #
 #########################
+IP_ADDR = "127.0.0.1"
 
-def create_udp_socket(bind_addr="127.0.0.1", bind_port=9000):
+def set_ip_addr(ip_addr):
+    """Set the IP address for all interfaces (if needed)."""
+    global IP_ADDR
+    IP_ADDR = ip_addr
+
+def create_udp_socket(bind_addr=IP_ADDR, bind_port=9000):
     """Create and bind a UDP socket for communication."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((bind_addr, bind_port))
     return sock
+
+
+def create_interface(interfaces):
+    """
+    Given an interfaces list from the config, create UDP sockets for each face.
+
+    Args:
+        interfaces (list): Example:
+            [
+                {"face": "face0", "port": 9010},
+                {"face": "face1", "port": 9011}
+            ]
+        bind_ip (str): IP to bind (default: localhost)
+
+    Returns:
+        dict: { face: { "sock": socket, "face": face, "port": port } }
+    """
+    for interface in interfaces:
+        face = interface["face"]
+        port = interface["port"]
+
+        sock = create_udp_socket(bind_port=port)
+
+        INTERFACES[face] = {
+            "sock": sock,
+            "face": face,
+            "port": port
+        }
+
+        log("INFO", f"Created socket for {face} on {IP_ADDR}:{port}")
+
+    return INTERFACES
 
 
 def send_packet(sock, addr, packet_bytes):
@@ -26,6 +74,9 @@ def receive_packet(sock, buffer_size=4096):
     """Receive a packet (blocking)."""
     data, addr = sock.recvfrom(buffer_size)
     return data, addr
+
+
+
 
 
 
@@ -99,26 +150,37 @@ def parse_packet(packet_bytes):
 
 
 
+
+
+
+
 ##################
 # Storage Module #
 ##################
 NODE_NAME = None
-NODE_ADDR = None
 STORAGE_PATH = ""
 INTEREST_LIFETIME = 5  # seconds
 
+INTERFACES = {}  # port -> face, sock, port 
+
 PIT = {}  # Pending Interest Table
+PIT_MAPPING = {}  # receiving_face -> addr of sender
+
 CS = {}   # Content Store
-FIB = {}   # Forwarding Information Base 
+FIB = {}   # Forwarding Information Base
+FACES = []  # List of faces
 FUNCTIONS_TABLE = {}   # Functions Table
 FRAG_BUFFER = {}
 
-def store_interest(name, addr, funcs=None, waiting_for=None):
+def store_interest(name, face, addr, funcs=None, waiting_for=None):
+    """Store an Interest in the PIT."""
+    PIT_MAPPING[face] = addr
+
     if name in PIT:
-        PIT[name]["addr"].add(addr)
+        PIT[name]["interface"].add(face)
     else:
         PIT[name] = { 
-            "addr": {addr}, 
+            "interface": {face}, 
             "time": time.time(),
             "funcs": funcs,
             "waiting_for": waiting_for,
@@ -131,11 +193,42 @@ def lookup_content(name):
     return CS.get(name, None)
 
 
+def lookup_fib(name: str):
+    """
+    Perform longest prefix matching on FIB
+    
+    Args:
+        name: Full NDN name like "/dlsu/ccs/image1"
+        
+    Returns:
+       Tuple of (face, port) for the best matching entry
+    """
+    if not name.startswith('/'):
+        name = '/' + name
+    
+    # Find all matching prefixes
+    interface_to_forward = None
+    best_match_length = -1
+
+    for prefix, entry in FIB.items():
+        # Check if name matches this prefix
+        if name.startswith(prefix) or prefix == "/":  # "/" matches everything
+            prefix_length = len(prefix)
+            
+            # Only keep entries with longest match
+            if prefix_length > best_match_length:
+                best_match_length = prefix_length
+                interface_to_forward = (entry["face"], entry["port"])
+    
+    return interface_to_forward
+
+
+
 #####################
 # Processing Module #
 #####################
 
-def process_interest(packet, addr, sock):
+def process_interest(packet, addr, sock, interface):
     """Process Interest: check CS or forward."""
     name = packet["name"]
 
@@ -158,9 +251,15 @@ def process_interest(packet, addr, sock):
             base_name, funcs = parse_nfn_expression(requested_name)
 
             # Store NFN interest in PIT
-            store_interest(name, addr, funcs, base_name)
+            store_interest(name, interface, addr, funcs, base_name)
 
-            process_interest({ "name" : base_name }, NODE_ADDR, sock)
+            # Forward Interest for base content (not recursive call)
+            route = lookup_fib(base_name)
+            if route:
+                forward_face, dest_port = route
+                source_port = INTERFACES[forward_face]["port"]
+                source_addr = ("127.0.0.1", source_port)
+                process_interest({ "name" : base_name }, source_addr, INTERFACES[forward_face]["sock"], None)
             return
 
         # Local content request
@@ -180,21 +279,26 @@ def process_interest(packet, addr, sock):
             node_to_find = NODE_NAME + "/" + requested_name.split("/")[0]
 
             # forward interest to satisfy it
-            port = FIB[node_to_find]
+            route = lookup_fib(node_to_find)
 
-            # Build Interest packet
-            interest_packet = build_interest_packet(name)
-            print(f"\n[DEBUG] Raw Interest Packet: {interest_packet}")
-            print(f"[DEBUG] Packet Size: {len(interest_packet)} bytes")
+            if route:
+                forward_face, dest_port = route
+                source_port = INTERFACES[forward_face]["port"]
+                dest_addr = ("127.0.0.1", dest_port)
 
-            print(f"[Client] Sending Interest for '{name}'")
-            send_packet(sock, ("127.0.0.1", port), interest_packet)
+                # Build Interest packet
+                interest_packet = build_interest_packet(name)
+                print(f"\n[DEBUG] Raw Interest Packet: {interest_packet}")
+                print(f"[DEBUG] Packet Size: {len(interest_packet)} bytes")
+
+                log("INFO", f"Sending Interest for '{name}'")
+                send_packet(INTERFACES[forward_face]["sock"], dest_addr, interest_packet)
         
         # store interest to PIT
-        store_interest(name, addr)
+        store_interest(name, interface, addr)
         print(f"\n\n{PIT}")
     else:
-        store_interest(name, addr)
+        store_interest(name, interface, addr)
         # Forwarding could go here (not implemented yet)
 
 
@@ -207,14 +311,14 @@ def process_data(packet, raw_packet, sock):
     frag_total = packet.get("frag_total")
 
     if name not in PIT:
-        print(f"[WARN] No PIT entry for {name}, dropping")
+        log("WARN", f"No PIT entry for {name}, dropping")
         return
     
     pit_entry = PIT[name]
     
-    for addr in pit_entry["addr"]:
+    for face in pit_entry["interface"]:
         # Check if this node requested the data
-        if addr == NODE_ADDR: 
+        if face == None: 
             # if node did request -> handle reassembly (if fragmented) -> process
             if frag_total:  # fragmented packet
                 if name not in FRAG_BUFFER:
@@ -240,8 +344,8 @@ def process_data(packet, raw_packet, sock):
 
                                 response = build_data_packet(pit_name, full_data)
                                 for resp in response:
-                                    for forward_addr in entry["addr"]:
-                                        send_packet(sock, forward_addr, resp)
+                                    for forward_face in entry["interface"]:
+                                        send_packet(INTERFACES[forward_face]["sock"], PIT_MAPPING[forward_face], resp)
                                         time.sleep(0.001)  # slight delay to avoid UDP packet loss
                         # PIT.pop(name)
 
@@ -249,11 +353,11 @@ def process_data(packet, raw_packet, sock):
                     filename = name[1:].replace('/', '_')
                     with open(filename, "wb") as f:
                         f.write(full_data)
-                    print(f"[INFO] Reassembled image written to {filename}")
+                    log("INFO", f"Reassembled image written to {filename}")
 
                     # cleanup buffer
                     del FRAG_BUFFER[name]
-
+                    return True
             else:  
                 # Non-fragmented packet, node did request -> process
                 requester = PIT.pop(name)
@@ -261,10 +365,10 @@ def process_data(packet, raw_packet, sock):
         # === Forwarding case ===
         # This node didn’t request → just forward (fragment untouched)
         else:
-            print(f"[Forwarding to {addr}] Packet for {name}, not requested here")
-        
-            # send 
-            send_packet(sock, addr, raw_packet)
+            log("INFO", f"Forwarding packet for {name} to {PIT_MAPPING[face]}")
+
+            # send
+            send_packet(sock, PIT_MAPPING[face], raw_packet)
     
         # store_data(name, full_data.decode()) # i think need to reassemble for caching or no?
         if frag_total:
@@ -279,6 +383,8 @@ def process_data(packet, raw_packet, sock):
                 del FRAG_BUFFER[name]
         else:
             PIT.pop(name)
+
+        return False
 
 
 def process_name_request(name) -> bytes:
