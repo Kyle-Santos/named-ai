@@ -5,6 +5,7 @@ import random
 import re
 import os
 import time
+import threading
 
 LOGS = []
 
@@ -164,6 +165,7 @@ INTEREST_LIFETIME = 30  # seconds
 INTERFACES = {}  # port -> face, sock, port 
 
 PIT = {}  # Pending Interest Table
+PIT_LOCK = threading.Lock()
 PIT_MAPPING = {}  # receiving_face -> addr of sender
 
 CS = {}   # Content Store
@@ -177,20 +179,21 @@ def store_interest(name, face, addr, funcs=None, waiting_for=None):
     PIT_MAPPING[face] = addr
 
     current_time = time.time()
-    
-    if name in PIT:
-        # Interest aggregation: add new face to existing entry
-        PIT[name]["interface"].add(face) 
 
-        # Update timestamp to the most recent Interest
-        PIT[name]["time"] = current_time
-    else:
-        PIT[name] = { 
-            "interface": {face}, 
-            "time": current_time,
-            "funcs": funcs,
-            "waiting_for": waiting_for,
-        }
+    with PIT_LOCK:
+        if name in PIT:
+            # Interest aggregation: add new face to existing entry
+            PIT[name]["interface"].add(face)
+
+            # Update timestamp to the most recent Interest
+            PIT[name]["time"] = current_time
+        else:
+            PIT[name] = { 
+                "interface": {face}, 
+                "time": current_time,
+                "funcs": funcs,
+                "waiting_for": waiting_for,
+            }
 
 def store_data(name, data):
     CS[name] = data
@@ -243,17 +246,25 @@ def cleanup_expired_pit_entries():
     current_time = time.time()
     expired_names = []
 
-    for name, entry in PIT.items():
-        age = current_time - entry["time"]
-        
-        if age > INTEREST_LIFETIME:
-            expired_names.append(name)
-            print(f"[PIT Timeout] Interest '{name}' expired after {age:.2f}s")
+    with PIT_LOCK:
+        for name, entry in PIT.items():
+            age = current_time - entry["time"]
+            
+            if age > INTEREST_LIFETIME:
+                expired_names.append(name)
+                print(f"[PIT Timeout] Interest '{name}' expired after {age:.2f}s")
 
-    for name in expired_names:
-        PIT.pop(name)
+        for name in expired_names:
+            PIT.pop(name)
         
     return len(expired_names)
+
+def get_PIT_entry(name):
+    with PIT_LOCK:
+        return PIT.get(name)
+
+
+
 
 #####################
 # Processing Module #
@@ -456,6 +467,7 @@ def parse_nfn_expression(expr: str):
 # def process_node_function(name):
     # if re.search(r"\(.?\)", name):
         # 
+
 
 
 
