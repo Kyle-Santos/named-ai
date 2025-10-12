@@ -196,10 +196,33 @@ def store_interest(name, face, addr, funcs=None, waiting_for=None):
             }
 
 def store_data(name, data):
-    CS[name] = data
+    CS[name] = {
+        "data": data,
+        "size": len(data),
+        "cached_time": time.time()
+    }
 
 def lookup_content(name):
     return CS.get(name, None)
+
+def load_storage_to_cs(storage_path):
+    """Load all files from storage_path into Content Store."""
+    if not storage_path or not os.path.exists(storage_path):
+        log("INFO", f"Storage path {storage_path} does not exist or is empty")
+        return
+
+    for filename in os.listdir(storage_path):
+        filepath = os.path.join(storage_path, filename)
+        if os.path.isfile(filepath):
+            try:
+                with open(filepath, "rb") as f:
+                    data = f.read()
+                # Assume name is /NODE_NAME/filename
+                name = f"/{NODE_NAME}/{filename}"
+                store_data(name, data)
+                log("INFO", f"Loaded {filename} into CS as {name}")
+            except Exception as e:
+                log("ERROR", f"Failed to load {filename}: {e}")
 
 
 def lookup_fib(name: str):
@@ -397,14 +420,17 @@ def process_data(packet, raw_packet, sock):
                         f.write(full_data)
                     log("INFO", f"Reassembled image written to {filename}")
 
+                    store_data(name, full_data)
+
                     # cleanup buffer
                     del FRAG_BUFFER[name]
 
                     PIT.pop(name)
 
                     return True
-            else:  
+            else:
                 # Non-fragmented packet, node did request -> process
+                store_data(name, data)
                 requester = PIT.pop(name)
 
         # === Forwarding case ===

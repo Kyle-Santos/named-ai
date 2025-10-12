@@ -95,6 +95,9 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
     node_config = load_node_config(config_path, node_name)
     interfaces = create_interfaces(node_config)
 
+    # Load storage contents into Content Store
+    NN.load_storage_to_cs(NN.STORAGE_PATH)
+
     msg = f"{NN.NODE_NAME} running with faces: {list(interfaces.keys())}"
     print(f"\033[92m{msg}\033[0m")
     if gui_callback:
@@ -348,9 +351,8 @@ if GUI_AVAILABLE:
             self.pit_box = self._make_counter("PIT", ACCENT)
             self.fib_box = self._make_counter("FIB", ACCENT2)
             self.cs_box = self._make_counter("CS", ACCENT3)
-            self.face_box = self._make_counter("FACES", SUCCESS)
-            
-            for w in (self.pit_box, self.fib_box, self.cs_box, self.face_box):
+
+            for w in (self.pit_box, self.fib_box, self.cs_box):
                 counters.addWidget(w)
             rightlay.addLayout(counters)
             
@@ -368,7 +370,7 @@ if GUI_AVAILABLE:
             bottom = QHBoxLayout()
             bottom.setSpacing(8)
             
-            for label in ["show pit", "show fib", "show cs", "show faces", "clear logs", "stats"]:
+            for label in ["show pit", "show fib", "show faces", "clear logs", "stats"]:
                 b = QPushButton(label)
                 b.clicked.connect(lambda checked=False, t=label: self.quick_command(t))
                 bottom.addWidget(b)
@@ -496,23 +498,10 @@ if GUI_AVAILABLE:
             pit = getattr(NN, "PIT", {})
             fib = getattr(NN, "FIB", {})
             cs = getattr(NN, "CS", {})
-            faces = getattr(NN, "FACES", None)
-            
+
             self._set_counter("pit", self._safe_len(pit))
             self._set_counter("fib", self._safe_len(fib))
             self._set_counter("cs", self._safe_len(cs))
-            
-            if isinstance(faces, (list, dict)):
-                self._set_counter("faces", self._safe_len(faces))
-            else:
-                unique_faces = set()
-                try:
-                    for v in fib.values():
-                        if isinstance(v, (list, tuple)):
-                            unique_faces.update(v)
-                    self._set_counter("faces", len(unique_faces) or 0)
-                except Exception:
-                    self._set_counter("faces", 0)
             
             # Update CS table
             try:
@@ -521,12 +510,16 @@ if GUI_AVAILABLE:
                     for name, meta in cs.items():
                         size = meta.get("size", "")
                         ctime = meta.get("cached_time", "")
+                        if ctime:
+                            ctime = datetime.fromtimestamp(ctime).strftime("%Y-%m-%d %H:%M:%S")
                         entries.append((name, size, ctime))
                 elif isinstance(cs, list):
                     for item in cs:
                         name = item.get("name", "")
                         size = item.get("size", "")
                         ctime = item.get("cached_time", "")
+                        if ctime:
+                            ctime = datetime.fromtimestamp(ctime).strftime("%Y-%m-%d %H:%M:%S")
                         entries.append((name, size, ctime))
                 
                 self.table.setRowCount(len(entries))

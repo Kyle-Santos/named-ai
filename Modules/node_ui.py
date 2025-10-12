@@ -76,8 +76,7 @@ class NodeMonitor(QWidget):
         self.pit_box = self._make_counter("PIT", ACCENT)
         self.fib_box = self._make_counter("FIB", ACCENT2)
         self.cs_box  = self._make_counter("CS", ACCENT3)
-        self.face_box= self._make_counter("FACES", SUCCESS)
-        for w in (self.pit_box, self.fib_box, self.cs_box, self.face_box):
+        for w in (self.pit_box, self.fib_box, self.cs_box):
             counters.addWidget(w)
         rightlay.addLayout(counters)
         self.table = QTableWidget(0, 3)
@@ -177,21 +176,9 @@ class NodeMonitor(QWidget):
         pit = getattr(NN, "PIT", {})
         fib = getattr(NN, "FIB", {})
         cs  = getattr(NN, "CS", {})
-        faces = getattr(NN, "FACES", None)
         self._set_counter("pit", self._safe_len(pit))
         self._set_counter("fib", self._safe_len(fib))
         self._set_counter("cs", self._safe_len(cs))
-        if isinstance(faces, (list, dict)):
-            self._set_counter("faces", self._safe_len(faces))
-        else:
-            unique_faces = set()
-            try:
-                for v in fib.values():
-                    if isinstance(v, (list, tuple)):
-                        unique_faces.update(v)
-                self._set_counter("faces", len(unique_faces) or 0)
-            except Exception:
-                self._set_counter("faces", 0)
         try:
             entries = []
             if isinstance(cs, dict):
