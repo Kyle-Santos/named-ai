@@ -9,7 +9,8 @@
             "FIB": {
                 "/dlsu": { "face": "face0", "port": 9008 },
                 "/dlsu/goks": { "face": "face0", "port": 9010 }
-            }
+            },
+            "storage": "client_node/storage/"
         },
         
         {
@@ -32,7 +33,8 @@
             "FIB": {
                 "/dlsu": { "face": "face0", "port": 9009 },
                 "/dlsu/goks/cam": { "face": "face1", "port": 9012 }
-            }
+            },
+            "storage": "nfn_nodes/goks/"
         },
 
         {

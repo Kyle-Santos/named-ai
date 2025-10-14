@@ -34,9 +34,10 @@ def load_node_config(config_path: str, node_name: str):
     NN.set_ip_addr(config.get("ip", "127.0.0.1"))
     
     NN.NODE_NAME = node_config["name"]
-    NN.STORAGE_PATH = node_config.get("storage", "")
     NN.FIB = node_config.get("FIB", {})
     NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
+    NN.initialiaze_content_store(node_config.get("storage", ""))
+    
     return node_config
 
 
