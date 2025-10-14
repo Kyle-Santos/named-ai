@@ -291,7 +291,7 @@ def get_PIT_entry(name):
 # Processing Module #
 #####################
 
-def process_interest(packet, addr, sock, interface):
+def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     """Process Interest: check CS or forward."""
     name = packet["name"]
 
@@ -300,10 +300,10 @@ def process_interest(packet, addr, sock, interface):
     if cached_data:
         bytes = process_name_request(cached_data["path"])
         response = build_data_packet(name, bytes)
-        for resp in response:
-            send_packet(sock, addr, resp)
-            time.sleep(0.001)  # slight delay to avoid UDP packet loss
-        return
+
+        SEND_QUEUE.put((sock, addr, response))
+        log("INFO", f"Served '{name}' from CS to {addr}")
+        return 
 
     # If this Interest is meant for this node
     if name.startswith(NODE_NAME):
@@ -346,18 +346,20 @@ def process_interest(packet, addr, sock, interface):
                 print(f"\n[DEBUG] Raw Interest Packet: {interest_packet}")
                 print(f"[DEBUG] Packet Size: {len(interest_packet)} bytes")
 
+                # store interest to PIT
+                store_interest(name, interface, addr)
+                print(f"\n\n{PIT}")
+
+                # send
                 log("INFO", f"Sending Interest for '{name}'")
-                send_packet(INTERFACES[forward_face]["sock"], dest_addr, interest_packet)
-        
-        # store interest to PIT
-        store_interest(name, interface, addr)
-        print(f"\n\n{PIT}")
+                SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [interest_packet]))
+                return
     else:
         store_interest(name, interface, addr)
         # Forwarding could go here (not implemented yet)
 
 
-def process_data(packet, raw_packet, sock):
+def process_data(packet, raw_packet, sock, SEND_QUEUE):
     """Process Data Packet"""
     name = packet["name"]
     data = packet["data"]
@@ -395,19 +397,18 @@ def process_data(packet, raw_packet, sock):
                                 full_data = func(full_data)
 
                             response = build_data_packet(pit_name, full_data)
-                            for resp in response:
-                                for forward_face in entry["interface"]:
-                                    send_packet(INTERFACES[forward_face]["sock"], PIT_MAPPING[forward_face], resp)
-                                    time.sleep(0.001)  # slight delay to avoid UDP packet loss
+                            for forward_face in entry["interface"]:
+                                SEND_QUEUE.put((INTERFACES[forward_face]["sock"], PIT_MAPPING[forward_face], response))
+
+                            log("INFO", f"Processed NFN '{pit_name}' and sent to {entry['interface']}")
                     # PIT.pop(name)
 
         # === Forwarding case ===
         # This node didn’t request → just forward (fragment untouched)
         else:
-            log("INFO", f"Forwarding packet for {name} to {PIT_MAPPING[face]}")
-
             # send
-            send_packet(sock, PIT_MAPPING[face], raw_packet)
+            SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
+            log("INFO", f"Forwarding packet for {name} to {PIT_MAPPING[face]}")
     
         # store_data(name, full_data.decode()) # i think need to reassemble for caching or no?
         if frag_total:
