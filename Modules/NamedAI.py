@@ -5,6 +5,7 @@ import random
 import re
 import os
 import time
+import threading
 
 LOGS = []
 
@@ -164,9 +165,12 @@ INTEREST_LIFETIME = 30  # seconds
 INTERFACES = {}  # port -> face, sock, port 
 
 PIT = {}  # Pending Interest Table
+PIT_LOCK = threading.Lock()
 PIT_MAPPING = {}  # receiving_face -> addr of sender
 
 CS = {}   # Content Store
+CS_SIZE = 100  # max number of entries in CS
+
 FIB = {}   # Forwarding Information Base
 FACES = []  # List of faces
 FUNCTIONS_TABLE = {}   # Functions Table
@@ -177,27 +181,47 @@ def store_interest(name, face, addr, funcs=None, waiting_for=None):
     PIT_MAPPING[face] = addr
 
     current_time = time.time()
-    
-    if name in PIT:
-        # Interest aggregation: add new face to existing entry
-        PIT[name]["interface"].add(face) 
 
-        # Update timestamp to the most recent Interest
-        PIT[name]["time"] = current_time
-    else:
-        PIT[name] = { 
-            "interface": {face}, 
-            "time": current_time,
-            "funcs": funcs,
-            "waiting_for": waiting_for,
-        }
+    with PIT_LOCK:
+        if name in PIT:
+            # Interest aggregation: add new face to existing entry
+            PIT[name]["interface"].add(face)
 
-def store_data(name, data):
-    CS[name] = data
+            # Update timestamp to the most recent Interest
+            PIT[name]["time"] = current_time
+        else:
+            PIT[name] = { 
+                "interface": {face}, 
+                "time": current_time,
+                "funcs": funcs,
+                "waiting_for": waiting_for,
+            }
+
+def store_data(name, path):
+    if len(CS) >= CS_SIZE:
+        # Evict the oldest entry
+        oldest_name = min(CS.keys(), key=lambda k: CS[k]["timestamp"])
+        CS.pop(oldest_name)
+
+    CS[name] = {"path": path, "timestamp": time.time()}
 
 def lookup_content(name):
     return CS.get(name, None)
 
+def initialiaze_content_store(storage_path):
+    global STORAGE_PATH
+    STORAGE_PATH = storage_path
+
+    if STORAGE_PATH != "" and not os.path.exists(STORAGE_PATH):
+        os.makedirs(STORAGE_PATH)
+
+    if STORAGE_PATH != "":
+        for filename in os.listdir(STORAGE_PATH):
+            full_path = os.path.join(STORAGE_PATH, filename)
+            if os.path.isfile(full_path):
+                content_name = "/" + filename.replace('_', '/')
+                store_data(content_name, full_path)
+                log("INFO", f"Cached '{content_name}' from storage")
 
 def lookup_fib(name: str):
     """
@@ -243,33 +267,43 @@ def cleanup_expired_pit_entries():
     current_time = time.time()
     expired_names = []
 
-    for name, entry in PIT.items():
-        age = current_time - entry["time"]
-        
-        if age > INTEREST_LIFETIME:
-            expired_names.append(name)
-            print(f"[PIT Timeout] Interest '{name}' expired after {age:.2f}s")
+    with PIT_LOCK:
+        for name, entry in PIT.items():
+            age = current_time - entry["time"]
+            
+            if age > INTEREST_LIFETIME:
+                expired_names.append(name)
+                print(f"[PIT Timeout] Interest '{name}' expired after {age:.2f}s")
 
-    for name in expired_names:
-        PIT.pop(name)
+        for name in expired_names:
+            PIT.pop(name)
         
     return len(expired_names)
+
+def get_PIT_entry(name):
+    with PIT_LOCK:
+        return PIT.get(name)
+
+
+
 
 #####################
 # Processing Module #
 #####################
 
-def process_interest(packet, addr, sock, interface):
+def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     """Process Interest: check CS or forward."""
     name = packet["name"]
 
     # First check Content Store
     cached_data = lookup_content(name)
     if cached_data:
-        response = build_data_packet(name, cached_data["data"])
-        for resp in response:
-            send_packet(sock, addr, resp)
-        return
+        bytes = process_name_request(cached_data["path"])
+        response = build_data_packet(name, bytes)
+
+        SEND_QUEUE.put((sock, addr, response))
+        log("INFO", f"Served '{name}' from CS to {addr}")
+        return 
 
     # If this Interest is meant for this node
     if name.startswith(NODE_NAME):
@@ -293,16 +327,6 @@ def process_interest(packet, addr, sock, interface):
                 process_interest({ "name" : base_name }, source_addr, INTERFACES[forward_face]["sock"], None)
             return
 
-        # Local content request
-        if not "/" in requested_name:
-            # no further hierarchy -> can process the interest 
-            # get the requested name
-            bytes = process_name_request(requested_name)
-            response = build_data_packet(name, bytes)
-            for resp in response:
-                send_packet(sock, addr, resp)
-                time.sleep(0.001)  # slight delay to avoid UDP packet loss
-            return
 
         # Forwarding case
         if name not in PIT:
@@ -322,18 +346,20 @@ def process_interest(packet, addr, sock, interface):
                 print(f"\n[DEBUG] Raw Interest Packet: {interest_packet}")
                 print(f"[DEBUG] Packet Size: {len(interest_packet)} bytes")
 
+                # store interest to PIT
+                store_interest(name, interface, addr)
+                print(f"\n\n{PIT}")
+
+                # send
                 log("INFO", f"Sending Interest for '{name}'")
-                send_packet(INTERFACES[forward_face]["sock"], dest_addr, interest_packet)
-        
-        # store interest to PIT
-        store_interest(name, interface, addr)
-        print(f"\n\n{PIT}")
+                SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [interest_packet]))
+                return
     else:
         store_interest(name, interface, addr)
         # Forwarding could go here (not implemented yet)
 
 
-def process_data(packet, raw_packet, sock):
+def process_data(packet, raw_packet, sock, SEND_QUEUE):
     """Process Data Packet"""
     name = packet["name"]
     data = packet["data"]
@@ -341,6 +367,7 @@ def process_data(packet, raw_packet, sock):
     frag_num = packet.get("frag_num")
     frag_total = packet.get("frag_total")
 
+    # Check if Interest exists in PIT
     if name not in PIT:
         log("WARN", f"No PIT entry for {name}, dropping")
         return
@@ -361,48 +388,27 @@ def process_data(packet, raw_packet, sock):
                     # Reassemble
                     full_data = b"".join(FRAG_BUFFER[name]["frags"][i] for i in range(1, frag_total+1))
 
-                    # print(full_data)
-                    # print(FRAG_BUFFER[name]["frags"].keys())
-                    
                     # how would i know that this name will be used for another request
-                    if name in PIT:
-                        # for now it will be inefficient, needs optimization
-                        for pit_name, entry in list(PIT.items()):
-                            if entry["waiting_for"] == name:
-                                for func_name in entry["funcs"]:
-                                    func = FUNCTIONS_TABLE[func_name]
-                                    full_data = func(full_data)
+                    # for now it will be inefficient, needs optimization
+                    for pit_name, entry in list(PIT.items()):
+                        if entry["waiting_for"] == name:
+                            for func_name in entry["funcs"]:
+                                func = FUNCTIONS_TABLE[func_name]
+                                full_data = func(full_data)
 
-                                response = build_data_packet(pit_name, full_data)
-                                for resp in response:
-                                    for forward_face in entry["interface"]:
-                                        send_packet(INTERFACES[forward_face]["sock"], PIT_MAPPING[forward_face], resp)
-                                        time.sleep(0.001)  # slight delay to avoid UDP packet loss
-                        # PIT.pop(name)
+                            response = build_data_packet(pit_name, full_data)
+                            for forward_face in entry["interface"]:
+                                SEND_QUEUE.put((INTERFACES[forward_face]["sock"], PIT_MAPPING[forward_face], response))
 
-                    # save to file
-                    filename = name[1:].replace('/', '_')
-                    with open(filename, "wb") as f:
-                        f.write(full_data)
-                    log("INFO", f"Reassembled image written to {filename}")
-
-                    # cleanup buffer
-                    del FRAG_BUFFER[name]
-
-                    PIT.pop(name)
-
-                    return True
-            else:  
-                # Non-fragmented packet, node did request -> process
-                requester = PIT.pop(name)
+                            log("INFO", f"Processed NFN '{pit_name}' and sent to {entry['interface']}")
+                    # PIT.pop(name)
 
         # === Forwarding case ===
         # This node didn’t request → just forward (fragment untouched)
         else:
-            log("INFO", f"Forwarding packet for {name} to {PIT_MAPPING[face]}")
-
             # send
-            send_packet(sock, PIT_MAPPING[face], raw_packet)
+            SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
+            log("INFO", f"Forwarding packet for {name} to {PIT_MAPPING[face]}")
     
         # store_data(name, full_data.decode()) # i think need to reassemble for caching or no?
         if frag_total:
@@ -410,23 +416,39 @@ def process_data(packet, raw_packet, sock):
                 FRAG_BUFFER[name] = {"frags": {}, "expected": None}
 
             if frag_num not in FRAG_BUFFER[name]["frags"]:
-                FRAG_BUFFER[name]["frags"][frag_num] = 1
+                FRAG_BUFFER[name]["frags"][frag_num] = data
 
             if frag_total == len(FRAG_BUFFER[name]["frags"]):
+                reassemble_fragments(name, frag_total)
+                
                 PIT.pop(name)
-                del FRAG_BUFFER[name]
+                
+                # cleanup buffer
+                del FRAG_BUFFER[name] 
+                return True
         else:
             PIT.pop(name)
 
         return False
 
 
-def process_name_request(name) -> bytes:
-    # use STORAGE_PATH to get to the dir storage and get the requested name
-    full_path = os.path.join(STORAGE_PATH, name)
+def reassemble_fragments(name, frag_total):
+    # Reassemble
+    full_data = b"".join(FRAG_BUFFER[name]["frags"][i] for i in range(1, frag_total+1))
+    
+    # save to file
+    filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_'))  # save in storage dir
+    with open(filename, "wb") as f:
+        f.write(full_data)
+    log("INFO", f"Reassembled image written to {filename}")
 
+    store_data(name, filename)
+
+
+
+def process_name_request(name) -> bytes:
     # Read file contents as raw bytes
-    with open(full_path, "rb") as f:
+    with open(name, "rb") as f:
         file_bytes = f.read()
 
     return file_bytes
@@ -456,6 +478,7 @@ def parse_nfn_expression(expr: str):
 # def process_node_function(name):
     # if re.search(r"\(.?\)", name):
         # 
+
 
 
 

@@ -2,7 +2,8 @@
 import os, sys, socket, json, time, threading, queue, argparse
 import NamedAI as NN  
 
-send_queue = queue.Queue()
+SEND_QUEUE = queue.Queue()
+PROCESSOR_QUEUE = queue.Queue()
 
 # -----------------------------
 # Define a root path for configs
@@ -34,9 +35,10 @@ def load_node_config(config_path: str, node_name: str):
     NN.set_ip_addr(config.get("ip", "127.0.0.1"))
     
     NN.NODE_NAME = node_config["name"]
-    NN.STORAGE_PATH = node_config.get("storage", "")
     NN.FIB = node_config.get("FIB", {})
     NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
+    NN.initialiaze_content_store(node_config.get("storage", ""))
+
     return node_config
 
 
@@ -44,46 +46,98 @@ def create_interfaces(node_config):
     return NN.create_interface(node_config["interfaces"])
 
 
-def receiver(face, entry, gui_callback=None):
-    sock = entry["sock"]
+def processor_thread(gui_callback=None):
+    """
+    Global packet processor - processes all packets from the queue.
+    This is a single thread that handles all Interest and Data processing.
+    """
+    
     while True:
         try:
-            raw_packet, addr = NN.receive_packet(sock)
-            parsed, err = NN.parse_packet(raw_packet)
+            # Get packet from queue (with timeout to allow periodic cleanup)
+            packet_info = PROCESSOR_QUEUE.get(timeout=0.5)
 
+            raw_packet = packet_info["raw_packet"]
+            sock = packet_info["sock"]
+            face = packet_info["face"]
+            addr = packet_info["addr"]
+
+            parsed, err = NN.parse_packet(raw_packet)
             if err:
-                msg = f"[ERROR] {err}"
+                msg = f"[{face}] {err}"
                 print(msg)
                 if gui_callback:
                     gui_callback("ERROR", msg)
                 continue
 
-            msg = f"Packet received on {face} from {addr}"
+            msg = f"Processing {parsed['type']} packet ({parsed['name']}) from {face} ({addr})"
             print(f"\n{msg}")
             if gui_callback:
                 gui_callback("INFO", msg)
+            
+            try:
+                # Process based on packet type
+                if parsed["type"] == "interest":                
+                    # Process Interest
+                    NN.process_interest(parsed, addr, sock, SEND_QUEUE=SEND_QUEUE, interface=face)
+                elif parsed["type"] == "data":               
+                    # Process Data 
+                    NN.process_data(parsed, raw_packet, sock, SEND_QUEUE=SEND_QUEUE)                
+            except Exception as e:
+                msg = f"[Processor] Error processing packet: {e}"
+                print(msg)
+                if gui_callback:
+                    gui_callback("ERROR", msg)       
+        except queue.Empty:
+            # Queue empty - do cleanup tasks
+            continue      
+        except Exception as e:
+            msg = f"[Processor] Critical error: {e}"
+            print(msg)
+            if gui_callback:
+                gui_callback("ERROR", msg)
+            time.sleep(0.1)
 
-            if parsed["type"] == "interest":
-                send_queue.put(("interest", parsed, addr, sock, face))
-            elif parsed["type"] == "data":
-                send_queue.put(("data", parsed, raw_packet, sock))
+
+def receiver(face, entry, gui_callback=None):
+    sock = entry["sock"]
+    sock.settimeout(1.0)  # Non-blocking with timeout
+
+    while True:
+        try:
+            raw_packet, addr = NN.receive_packet(sock)
+
+            msg = f"[{face}] Received a packet from {addr}"
+            print(msg)
+            if gui_callback:
+                gui_callback("INFO", msg)
+            
+            # Queue packet for processing
+            PROCESSOR_QUEUE.put({
+                "raw_packet": raw_packet,
+                "sock": sock,
+                "face": face,
+                "addr": addr
+            })
+        
+        except socket.timeout:
+            continue
         except Exception as e:
             msg = f"[Receiver {face}] Error: {e}"
             print(msg)
             if gui_callback:
                 gui_callback("ERROR", msg)
+            time.sleep(0.1)
 
 
 def sender(gui_callback=None):
     while True:
-        task = send_queue.get()
+        task = SEND_QUEUE.get()
         try:
-            if task[0] == "interest":
-                _, parsed, addr, sock, face = task
-                NN.process_interest(parsed, addr, sock, interface=face)
-            elif task[0] == "data":
-                _, parsed, raw_packet, sock = task
-                NN.process_data(parsed, raw_packet, sock)
+            sock, addr, response = task
+            for resp in response:
+                NN.send_packet(sock, addr, resp)
+                time.sleep(0.001)  # slight delay to avoid UDP packet loss
         except Exception as e:
             msg = f"[Sender] Error: {e}"
             print(msg)
@@ -92,6 +146,8 @@ def sender(gui_callback=None):
 
 
 def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
+    """Main node runner with separated receiver and processor threads."""
+
     node_config = load_node_config(config_path, node_name)
     interfaces = create_interfaces(node_config)
 
@@ -102,14 +158,23 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
 
     # Start receiver threads
     for face, entry in interfaces.items():
-        t = threading.Thread(target=receiver, args=(face, entry, gui_callback), daemon=True)
+        t = threading.Thread(target=receiver, args=(face, entry, gui_callback), daemon=True, name=f"Receiver-{face}")
         t.start()
 
+    # Start global processor thread - PROCESS ALL PACKETS
+    t = threading.Thread(
+        target=processor_thread,
+        args=(gui_callback,),
+        daemon=True,
+        name="Processor"
+    )
+    t.start()
+
     # Start sender thread
-    threading.Thread(target=sender, args=(gui_callback,), daemon=True).start()
+    threading.Thread(target=sender, args=(gui_callback,), daemon=True, name="Sender").start()
 
     # Start PIT cleanup thread
-    threading.Thread(target=pit_cleanup_worker, args=(gui_callback,), daemon=True).start()
+    threading.Thread(target=pit_cleanup_worker, args=(gui_callback,), daemon=True, name="PIT_Cleanup").start()
 
     # Keep alive
     try:
@@ -119,97 +184,19 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
         print("\nShutting down node...")
 
 
-def run_client(node_name: str, interest_name: str, config_path=CONFIG_PATH, gui_callback=None):
-    node_config = load_node_config(config_path, node_name)
-    interfaces = create_interfaces(node_config)
 
-    msg = f"{NN.NODE_NAME} running with faces: {list(interfaces.keys())}"
-    print(f"\033[92m{msg}\033[0m")
-    if gui_callback:
-        gui_callback("SUCCESS", msg)
-
-    entry = interfaces["face0"]
-    sock = entry["sock"]
-
-    # Build Interest packet
-    interest_packet = NN.build_interest_packet(interest_name)
-    print(f"[DEBUG] Raw Interest Packet: {interest_packet}")
-    print(f"[DEBUG] Packet Size: {len(interest_packet)} bytes")
-
-    send_time = time.time()
-    msg = f"Sending Interest for '{interest_name}' at {time.strftime('%H:%M:%S', time.localtime(send_time))}"
-    print(msg)
-    if gui_callback:
-        gui_callback("INFO", msg)
-    
-    face, dest_port = NN.lookup_fib(interest_name)
-    sock.sendto(interest_packet, (NN.IP_ADDR, dest_port))
-
-    NN.store_interest(interest_name, None, (NN.IP_ADDR, entry["port"]))
-
-    result_queue = queue.Queue()
 
     # Start receiver threads
     for face, entry in interfaces.items():
         t = threading.Thread(target=receiver_client, 
-                             args=(face, entry, send_time, result_queue, gui_callback))
+                             args=(face, entry, gui_callback))
         t.start()
 
     # Start PIT cleanup thread
     threading.Thread(target=pit_cleanup_worker, args=(gui_callback,), daemon=True).start()
 
-    try:
-        rtt = result_queue.get(timeout=5)
-        msg = f"Interest satisfied, RTT: {rtt:.4f}s"
-        print(msg)
-        if gui_callback:
-            gui_callback("SUCCESS", msg)
-    except queue.Empty:
-        msg = "Timeout, no Data received"
-        print(msg)
-        if gui_callback:
-            gui_callback("WARN", msg)
-
-
-def receiver_client(face, entry, send_time, result_queue, gui_callback=None):
-    sock = entry["sock"]
-    while True:
-        try:
-            raw_packet, addr = NN.receive_packet(sock)
-            parsed, err = NN.parse_packet(raw_packet)
-
-            if err:
-                msg = f"[ERROR] {err}"
-                print(msg)
-                if gui_callback:
-                    gui_callback("ERROR", msg)
-                continue
-
-            msg = f"Packet received on {face} from {addr}"
-            print(f"\n{msg}")
-            if gui_callback:
-                gui_callback("INFO", msg)
-
-            if parsed["type"] == "data":
-                recv_time = time.time()
-                msg = f"Got fragment from {addr} at {time.strftime('%H:%M:%S', time.localtime(recv_time))}"
-                print(msg)
-                if gui_callback:
-                    gui_callback("INFO", msg)
-                
-                complete = NN.process_data(parsed, raw_packet, sock)
-
-                frag_total = parsed.get("frag_total", 0)
-                
-                if complete and frag_total != 0 and parsed.get("name") not in NN.FRAG_BUFFER:
-                    rtt = recv_time - send_time
-                    result_queue.put(rtt)
-                    # return
-        except Exception as e:
-            msg = f"[Receiver {face}] Error: {e}"
-            print(msg)
-            if gui_callback:
-                gui_callback("ERROR", msg)
+    # Start sender thread
+    threading.Thread(target=sender, args=(gui_callback,), daemon=True, name="Sender").start()
 
 
 def pit_cleanup_worker(gui_callback=None):
@@ -268,11 +255,10 @@ if GUI_AVAILABLE:
             pass
 
     class NodeMonitor(QWidget):
-        def __init__(self, start_mode: str, node_name: str, interest_name: str = None):
+        def __init__(self, start_mode: str, node_name: str):
             super().__init__()
             self.start_mode = start_mode
             self.node_name = node_name
-            self.interest_name = interest_name
             
             self.setWindowTitle(f"NDN Node Monitor - {node_name}")
             self.resize(1100, 720)
@@ -385,14 +371,15 @@ if GUI_AVAILABLE:
             
             bottom.addStretch(1)
             
-            self.cmd = QLineEdit()
-            self.cmd.setPlaceholderText("Enter command (e.g., send interest /dlsu/ccs/img21)")
-            self.cmd.returnPressed.connect(self.handle_command)
-            bottom.addWidget(self.cmd, 3)
-            
-            self.exec_btn = QPushButton("EXECUTE")
-            self.exec_btn.clicked.connect(self.handle_command)
-            bottom.addWidget(self.exec_btn)
+            if self.start_mode == "client":
+                self.cmd = QLineEdit()
+                self.cmd.setPlaceholderText("Enter command (e.g., send interest /dlsu/ccs/img21)")
+                self.cmd.returnPressed.connect(self.handle_command)
+                bottom.addWidget(self.cmd, 3)
+                
+                self.exec_btn = QPushButton("EXECUTE")
+                self.exec_btn.clicked.connect(self.handle_command)
+                bottom.addWidget(self.exec_btn)
             
             root.addLayout(bottom)
 
@@ -430,15 +417,15 @@ if GUI_AVAILABLE:
             """Start the node/client backend in a separate thread"""
             def backend_wrapper():
                 try:
-                    if self.start_mode == "node":
-                        run_node(self.node_name, gui_callback=self.append_log)
-                    elif self.start_mode == "client" and self.interest_name:
-                        run_client(self.node_name, self.interest_name, gui_callback=self.append_log)
+                    run_node(self.node_name, gui_callback=self.append_log)
                 except Exception as e:
                     self.append_log("ERROR", f"Backend error: {e}")
+                    import traceback
+                    traceback.print_exc()
             
             t = threading.Thread(target=backend_wrapper, daemon=True)
             t.start()
+
 
         def quick_command(self, txt: str):
             if txt == "send interest":
@@ -474,22 +461,18 @@ if GUI_AVAILABLE:
                         self.append_log("WARN", "Usage: send interest /path/name")
                         return
                     name = parts[2].strip()
-                    self.append_log("INFO", f"Sending interest for {name} ...")
                     
                     interest_packet = NN.build_interest_packet(name)
                     print(f"[DEBUG] Raw Interest Packet: {interest_packet}")
                     print(f"[DEBUG] Packet Size: {len(interest_packet)} bytes")
-
-                    send_time = time.time()
-                    msg = f"[Client] Sending Interest for '{name}' at {time.strftime('%H:%M:%S', time.localtime(send_time))}"
-                    print(msg)
-                    
-                    self.append_log("INFO", msg)
-
-                    face, dest_port = NN.lookup_fib(name)
-                    NN.INTERFACES["face0"]["sock"].sendto(interest_packet, (NN.IP_ADDR, dest_port))
+                                
+                    _, dest_port = NN.lookup_fib(name)
+                    SEND_QUEUE.put((NN.INTERFACES["face0"]["sock"], (NN.IP_ADDR, dest_port), [interest_packet]))
 
                     NN.store_interest(name, None, (NN.IP_ADDR, NN.INTERFACES["face0"]["port"]))
+                    msg = f"Sending Interest for '{name}' at {time.strftime('%H:%M:%S', time.localtime(NN.get_PIT_entry(name)['time']))}"
+                    print(msg)
+                    self.append_log("INFO", msg)
 
                     return
                 
@@ -577,43 +560,34 @@ if GUI_AVAILABLE:
 # =============================================================================
 
 def main():
-    ap = argparse.ArgumentParser(description="NDN Node Runner with optional GUI")
+    ap = argparse.ArgumentParser(description="NDN Node Runner with GUI")
     ap.add_argument("--node", help="Run a node with this node_name (per node_config.json)")
-    ap.add_argument("--client", nargs=2, metavar=("NODE_NAME", "INTEREST"), 
-                    help="Send Interest from NODE_NAME for INTEREST")
-    ap.add_argument("--gui", action="store_true", help="Launch with GUI monitor")
+    ap.add_argument("--client", help="Run a client with this node_name (per node_config.json)"),
+    # ap.add_argument("--gui", action="store_true", help="Launch with GUI monitor")
     args = ap.parse_args()
 
     if (args.node is None) == (args.client is None):
-        print("Choose exactly one mode: --node <node_name>  OR  --client <node_name> <interest_name>")
+        print("Choose exactly one mode: --node <node_name>  OR  --client <node_name>")
         return
 
     # Determine mode
     if args.node:
         start_mode = "node"
         node_name = args.node
-        interest = None
-    else:
+    elif args.client:
         start_mode = "client"
-        node_name, interest = args.client
+        node_name = args.client
 
     # Launch with or without GUI
-    if args.gui:
-        if not GUI_AVAILABLE:
-            print("ERROR: PyQt5 is not installed. Install it with: pip install PyQt5")
-            print("Running in CLI mode instead...")
-            args.gui = False
-        else:
-            app = QApplication(sys.argv)
-            win = NodeMonitor(start_mode, node_name, interest)
-            win.show()
-            sys.exit(app.exec_())
-    
-    # CLI mode
-    if start_mode == "node":
-        run_node(node_name)
+    if not GUI_AVAILABLE:
+        print("ERROR: PyQt5 is not installed. Install it with: pip install PyQt5")
+        print("Running in CLI mode instead...")
+        return
     else:
-        run_client(node_name, interest)
+        app = QApplication(sys.argv)
+        win = NodeMonitor(start_mode, node_name)
+        win.show()
+        sys.exit(app.exec_())
 
 
 if __name__ == "__main__":

@@ -1,4 +1,6 @@
 Modules/goks_cam_node/kagglehub
-data-preprocessing/Face_Dataset
 Modules/client_node/*.jpg
+Modules/client_node/storage/*
+Modules/nfn_nodes/goks/*
+data-preprocessing/Face_Dataset
 *.pyc
