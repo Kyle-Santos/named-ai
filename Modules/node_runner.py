@@ -363,8 +363,8 @@ if GUI_AVAILABLE:
             # Bottom Command Bar
             bottom = QHBoxLayout()
             bottom.setSpacing(8)
-            
-            for label in ["show pit", "show fib", "show cs", "show faces", "clear logs", "stats"]:
+
+            for label in ["show pit", "show cs", "clear logs", "stats"]:
                 b = QPushButton(label)
                 b.clicked.connect(lambda checked=False, t=label: self.quick_command(t))
                 bottom.addWidget(b)
