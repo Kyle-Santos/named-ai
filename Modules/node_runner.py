@@ -266,6 +266,7 @@ if GUI_AVAILABLE:
             self.start_mode = start_mode
             self.node_name = node_name
             self.interest_name = interest_name
+            self.display_mode = "pit"  # Default to displaying PIT
             
             self.setWindowTitle(f"NDN Node Monitor - {node_name}")
             self.resize(1100, 720)
@@ -284,6 +285,7 @@ if GUI_AVAILABLE:
             self.timer = QTimer(self)
             self.timer.timeout.connect(self.refresh_stats)
             self.timer.start(800)
+            self.refresh_stats()  # Initial refresh to display PIT by default
 
         def _get_default_style(self):
             return """
@@ -300,30 +302,30 @@ if GUI_AVAILABLE:
             root = QVBoxLayout(self)
             root.setContentsMargins(14, 14, 14, 14)
             root.setSpacing(10)
-            
+
             split = QHBoxLayout()
             split.setSpacing(10)
             root.addLayout(split)
-            
+
             # Left Panel - Logs
             self.left = QFrame()
             self.left.setFrameShape(QFrame.StyledPanel)
             leftlay = QVBoxLayout(self.left)
             leftlay.setContentsMargins(12, 12, 12, 12)
             leftlay.setSpacing(8)
-            
+
             title_logs = QLabel("DEBUG LOGS")
             title_logs.setStyleSheet(f"color:{SUCCESS}; font-weight:700; font-size:12pt;")
-            
+
             self.ns_label = QLabel(f"{self.node_name}")
             self.ns_label.setStyleSheet("background:#0b1020; border:1px solid #1f2a44; border-radius:6px; padding:4px 8px; color:#9ca3af;")
-            
+
             tt = QHBoxLayout()
             tt.addWidget(title_logs)
             tt.addStretch(1)
             tt.addWidget(self.ns_label)
             leftlay.addLayout(tt)
-            
+
             self.logs = QTextEdit()
             self.logs.setReadOnly(True)
             try:
@@ -331,20 +333,20 @@ if GUI_AVAILABLE:
             except:
                 self.logs.setFont(QFont("Monospace", 10))
             leftlay.addWidget(self.logs, 1)
-            
+
             split.addWidget(self.left, 1)
-            
+
             # Right Panel - Data Structures
             self.right = QFrame()
             self.right.setFrameShape(QFrame.StyledPanel)
             rightlay = QVBoxLayout(self.right)
             rightlay.setContentsMargins(12, 12, 12, 12)
             rightlay.setSpacing(8)
-            
+
             title_ds = QLabel("DATA STRUCTURES")
             title_ds.setStyleSheet(f"color:{ACCENT2}; font-weight:700; font-size:12pt;")
             rightlay.addWidget(title_ds)
-            
+
             # Counters
             counters = QHBoxLayout()
             counters.setSpacing(10)
@@ -355,38 +357,84 @@ if GUI_AVAILABLE:
             for w in (self.pit_box, self.fib_box, self.cs_box):
                 counters.addWidget(w)
             rightlay.addLayout(counters)
-            
-            # Content Store Table
+
+            # Table for displaying data structures
             self.table = QTableWidget(0, 3)
-            self.table.setHorizontalHeaderLabels(["NAME", "SIZE", "CACHED TIME"])
+            self._update_table_headers()
             self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
             self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
             self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
             rightlay.addWidget(self.table, 1)
-            
+
             split.addWidget(self.right, 1)
-            
+
             # Bottom Command Bar
             bottom = QHBoxLayout()
             bottom.setSpacing(8)
-            
-            for label in ["show pit", "show fib", "clear logs", "stats"]:
+
+            for label in ["show pit", "show cs", "clear logs", "stats"]:
                 b = QPushButton(label)
                 b.clicked.connect(lambda checked=False, t=label: self.quick_command(t))
                 bottom.addWidget(b)
-            
+
             bottom.addStretch(1)
-            
+
             self.cmd = QLineEdit()
             self.cmd.setPlaceholderText("Enter command (e.g., send interest /dlsu/ccs/img21)")
             self.cmd.returnPressed.connect(self.handle_command)
             bottom.addWidget(self.cmd, 3)
-            
+
             self.exec_btn = QPushButton("EXECUTE")
             self.exec_btn.clicked.connect(self.handle_command)
             bottom.addWidget(self.exec_btn)
-            
+
             root.addLayout(bottom)
+
+        def _update_table_headers(self):
+            if self.display_mode == "pit":
+                headers = ["NAME", "TIMESTAMP", "COUNT"]
+            elif self.display_mode == "cs":
+                headers = ["NAME", "SIZE", "CACHED TIME"]
+            else:
+                headers = ["NAME", "VALUE1", "VALUE2"]
+            self.table.setHorizontalHeaderLabels(headers)
+
+        def _update_table_data(self):
+            try:
+                entries = []
+                if self.display_mode == "pit":
+                    pit = getattr(NN, "PIT", {})
+                    for name, data in pit.items():
+                        timestamp = data.get("time", "")
+                        if timestamp:
+                            timestamp = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+                        count = len(data.get("faces", []))
+                        entries.append((name, timestamp, str(count)))
+                elif self.display_mode == "cs":
+                    cs = getattr(NN, "CS", {})
+                    if isinstance(cs, dict):
+                        for name, meta in cs.items():
+                            size = meta.get("size", "")
+                            ctime = meta.get("cached_time", "")
+                            if ctime:
+                                ctime = datetime.fromtimestamp(ctime).strftime("%Y-%m-%d %H:%M:%S")
+                            entries.append((name, size, ctime))
+                    elif isinstance(cs, list):
+                        for item in cs:
+                            name = item.get("name", "")
+                            size = item.get("size", "")
+                            ctime = item.get("cached_time", "")
+                            if ctime:
+                                ctime = datetime.fromtimestamp(ctime).strftime("%Y-%m-%d %H:%M:%S")
+                            entries.append((name, size, ctime))
+
+                self.table.setRowCount(len(entries))
+                for r, (col1, col2, col3) in enumerate(entries):
+                    self.table.setItem(r, 0, QTableWidgetItem(str(col1)))
+                    self.table.setItem(r, 1, QTableWidgetItem(str(col2)))
+                    self.table.setItem(r, 2, QTableWidgetItem(str(col3)))
+            except Exception:
+                pass
 
         def _make_counter(self, label: str, color: str):
             box = QFrame()
@@ -438,9 +486,14 @@ if GUI_AVAILABLE:
         def quick_command(self, txt: str):
             if txt == "send interest":
                 self.cmd.setText("send interest /dlsu/goks/img21")
+            elif txt in ("show pit", "show cs"):
+                self.display_mode = txt.split()[1]
+                self._update_table_headers()
+                self.refresh_stats()
+                self.append_log("SUCCESS", f"Switched to displaying {self.display_mode.upper()}")
             else:
                 self.cmd.setText(txt)
-            self.handle_command()
+                self.handle_command()
 
         def handle_command(self):
             raw = self.cmd.text().strip()
@@ -502,34 +555,9 @@ if GUI_AVAILABLE:
             self._set_counter("pit", self._safe_len(pit))
             self._set_counter("fib", self._safe_len(fib))
             self._set_counter("cs", self._safe_len(cs))
-            
-            # Update CS table
-            try:
-                entries = []
-                if isinstance(cs, dict):
-                    for name, meta in cs.items():
-                        size = meta.get("size", "")
-                        ctime = meta.get("cached_time", "")
-                        if ctime:
-                            ctime = datetime.fromtimestamp(ctime).strftime("%Y-%m-%d %H:%M:%S")
-                        entries.append((name, size, ctime))
-                elif isinstance(cs, list):
-                    for item in cs:
-                        name = item.get("name", "")
-                        size = item.get("size", "")
-                        ctime = item.get("cached_time", "")
-                        if ctime:
-                            ctime = datetime.fromtimestamp(ctime).strftime("%Y-%m-%d %H:%M:%S")
-                        entries.append((name, size, ctime))
-                
-                self.table.setRowCount(len(entries))
-                for r, (name, size, ctime) in enumerate(entries):
-                    self.table.setItem(r, 0, QTableWidgetItem(str(name)))
-                    self.table.setItem(r, 1, QTableWidgetItem(str(size)))
-                    self.table.setItem(r, 2, QTableWidgetItem(str(ctime)))
-            except Exception:
-                pass
-            
+
+            self._update_table_data()
+
             if force_log:
                 self.append_log("INFO", f"Stats — PIT: {self._safe_len(pit)}, FIB: {self._safe_len(fib)}, CS: {self._safe_len(cs)}")
 

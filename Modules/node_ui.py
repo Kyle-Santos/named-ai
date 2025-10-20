@@ -46,10 +46,14 @@ class NodeMonitor(QWidget):
         self.start_mode = start_mode
         self.node_name = node_name
         self.interest_name = interest_name
+        self.display_mode = "pit"  # Default to displaying PIT
         self.setWindowTitle("NDN Node Monitor")
         self.resize(1100, 720)
-        with open('styles.qss', 'r') as f:
-            self.setStyleSheet(f.read())
+        try:
+            with open('styles.qss', 'r') as f:
+                self.setStyleSheet(f.read())
+        except FileNotFoundError:
+            pass  # Use default styles if styles.qss is not found
         root = QVBoxLayout(self); root.setContentsMargins(14, 14, 14, 80); root.setSpacing(10)
         split = QHBoxLayout(); split.setSpacing(10)
         root.addLayout(split)
@@ -80,7 +84,7 @@ class NodeMonitor(QWidget):
             counters.addWidget(w)
         rightlay.addLayout(counters)
         self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["NAME","SIZE","CACHED TIME"])
+        self._update_table_headers()
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
@@ -112,6 +116,7 @@ class NodeMonitor(QWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh_stats)
         self.timer.start(800)
+        self.refresh_stats()  # Initial refresh to display PIT by default
     def _make_counter(self, label: str, color: str) -> QWidget:
         box = QFrame()
         box.setFrameShape(QFrame.StyledPanel)
@@ -125,6 +130,14 @@ class NodeMonitor(QWidget):
         lab = self.findChild(QLabel, f"val_{name}")
         if lab:
             lab.setText(str(value))
+    def _update_table_headers(self):
+        if self.display_mode == "pit":
+            headers = ["NAME", "TIMESTAMP", "COUNT"]
+        elif self.display_mode == "cs":
+            headers = ["NAME", "SIZE", "CACHED TIME"]
+        else:
+            headers = ["NAME", "VALUE1", "VALUE2"]
+        self.table.setHorizontalHeaderLabels(headers)
     def append_log(self, level: str, line: str):
         color = {"SUCCESS": SUCCESS, "INFO": INFO, "WARN": WARN, "ERROR": ERROR}.get(level, INFO)
         ts = datetime.now().strftime("%I:%M:%S %p")
@@ -134,9 +147,14 @@ class NodeMonitor(QWidget):
     def quick_command(self, txt: str):
         if txt == "send interest":
             self.cmd.setText("send interest /dlsu/goks/img21")
+        elif txt in ("show pit", "show cs"):
+            self.display_mode = txt.split()[1]
+            self._update_table_headers()
+            self.refresh_stats()
+            self.append_log("SUCCESS", f"Switched to displaying {self.display_mode.upper()}")
         else:
             self.cmd.setText(txt)
-        self.handle_command()
+            self.handle_command()
     def handle_command(self):
         raw = self.cmd.text().strip()
         if not raw:
@@ -181,24 +199,41 @@ class NodeMonitor(QWidget):
         self._set_counter("cs", self._safe_len(cs))
         try:
             entries = []
-            if isinstance(cs, dict):
-                for name, meta in cs.items():
-                    size = meta.get("size", "")
-                    ctime = meta.get("cached_time", "")
-                    entries.append((name, size, ctime))
-            elif isinstance(cs, list):
-                for item in cs:
-                    name = item.get("name","")
-                    size = item.get("size","")
-                    ctime = item.get("cached_time","")
-                    entries.append((name, size, ctime))
+            if self.display_mode == "pit":
+                if isinstance(pit, dict):
+                    for name, entry in pit.items():
+                        timestamp = entry.get("time", "")
+                        count = len(entry.get("interface", set()))
+                        entries.append((name, timestamp, count))
+                elif isinstance(pit, list):
+                    for item in pit:
+                        name = item.get("name","")
+                        timestamp = item.get("time","")
+                        count = len(item.get("interface", []))
+                        entries.append((name, timestamp, count))
+                else:
+                    entries = []
+            elif self.display_mode == "cs":
+                if isinstance(cs, dict):
+                    for name, meta in cs.items():
+                        size = meta.get("size", "")
+                        ctime = meta.get("cached_time", "")
+                        entries.append((name, size, ctime))
+                elif isinstance(cs, list):
+                    for item in cs:
+                        name = item.get("name","")
+                        size = item.get("size","")
+                        ctime = item.get("cached_time","")
+                        entries.append((name, size, ctime))
+                else:
+                    entries = []
             else:
                 entries = []
             self.table.setRowCount(len(entries))
-            for r, (name, size, ctime) in enumerate(entries):
-                self.table.setItem(r, 0, QTableWidgetItem(str(name)))
-                self.table.setItem(r, 1, QTableWidgetItem(str(size)))
-                self.table.setItem(r, 2, QTableWidgetItem(str(ctime)))
+            for r, (col1, col2, col3) in enumerate(entries):
+                self.table.setItem(r, 0, QTableWidgetItem(str(col1)))
+                self.table.setItem(r, 1, QTableWidgetItem(str(col2)))
+                self.table.setItem(r, 2, QTableWidgetItem(str(col3)))
         except Exception as e:
             pass
         if force_log:
@@ -206,8 +241,7 @@ class NodeMonitor(QWidget):
     def show_structure(self, which: str):
         obj = None
         if which == "pit":
-            obj = NN.INTERFACES
-            # obj = getattr(NN, "INTERFACES", {})
+            obj = getattr(NN, "PIT", {})
         elif which == "fib":
             obj = getattr(NN, "FIB", {})
         elif which == "cs":
