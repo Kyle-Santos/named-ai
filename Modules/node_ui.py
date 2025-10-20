@@ -89,7 +89,7 @@ class NodeMonitor(QWidget):
         bottom = QHBoxLayout(); bottom.setSpacing(8)
         self.cmd = QLineEdit(); self.cmd.setPlaceholderText("Enter command (e.g., show pit, show fib, show cs, show faces, clear logs, send interest /dlsu/ccs/img21, stats)")
         self.exec_btn = QPushButton("EXECUTE"); self.exec_btn.setObjectName("Exec"); self.exec_btn.clicked.connect(self.handle_command)
-        for label in ["show pit", "show fib", "show cs", "show faces", "clear logs", "send interest", "stats"]:
+        for label in ["show pit", "show fib", "show cs", "clear logs", "send interest", "stats"]:
             b = QPushButton(label)
             b.clicked.connect(lambda checked=False, t=label: self.quick_command(t))
             bottom.addWidget(b)

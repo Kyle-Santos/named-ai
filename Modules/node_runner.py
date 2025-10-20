@@ -370,7 +370,7 @@ if GUI_AVAILABLE:
             bottom = QHBoxLayout()
             bottom.setSpacing(8)
             
-            for label in ["show pit", "show fib", "show faces", "clear logs", "stats"]:
+            for label in ["show pit", "show fib", "clear logs", "stats"]:
                 b = QPushButton(label)
                 b.clicked.connect(lambda checked=False, t=label: self.quick_command(t))
                 bottom.addWidget(b)
