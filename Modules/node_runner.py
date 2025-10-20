@@ -259,7 +259,8 @@ if GUI_AVAILABLE:
             super().__init__()
             self.start_mode = start_mode
             self.node_name = node_name
-            
+            self.current_table = "pit"  # Default to PIT table
+
             self.setWindowTitle(f"NDN Node Monitor - {node_name}")
             self.resize(1100, 720)
             
@@ -350,9 +351,9 @@ if GUI_AVAILABLE:
                 counters.addWidget(w)
             rightlay.addLayout(counters)
             
-            # Content Store Table
+            # Data Structure Table (PIT by default)
             self.table = QTableWidget(0, 3)
-            self.table.setHorizontalHeaderLabels(["NAME", "SIZE", "CACHED TIME"])
+            self.set_table_headers("pit")
             self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
             self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
             self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
@@ -406,6 +407,15 @@ if GUI_AVAILABLE:
             if lab:
                 lab.setText(str(value))
 
+        def set_table_headers(self, mode: str):
+            if mode == "pit":
+                headers = ["NAME", "FACE", "TIME"]
+            elif mode == "cs":
+                headers = ["NAME", "SIZE", "CACHED TIME"]
+            else:
+                headers = ["NAME", "VALUE1", "VALUE2"]
+            self.table.setHorizontalHeaderLabels(headers)
+
         def append_log(self, level: str, line: str):
             color = {"SUCCESS": SUCCESS, "INFO": INFO, "WARN": WARN, "ERROR": ERROR}.get(level, INFO)
             ts = datetime.now().strftime("%I:%M:%S %p")
@@ -452,7 +462,13 @@ if GUI_AVAILABLE:
                 
                 if raw.lower().startswith("show "):
                     what = raw.split(" ", 1)[1].strip().lower()
-                    self.show_structure(what)
+                    if what in ("pit", "cs"):
+                        self.current_table = what
+                        self.set_table_headers(what)
+                        self.refresh_stats()
+                        self.append_log("SUCCESS", f"Switched table to {what.upper()}")
+                    else:
+                        self.show_structure(what)
                     return
                 
                 if raw.lower().startswith("send interest"):
@@ -508,26 +524,33 @@ if GUI_AVAILABLE:
                 except Exception:
                     self._set_counter("faces", 0)
             
-            # Update CS table
+            # Update table based on current mode
             try:
                 entries = []
-                if isinstance(cs, dict):
-                    for name, meta in cs.items():
-                        size = meta.get("size", "")
-                        ctime = meta.get("cached_time", "")
-                        entries.append((name, size, ctime))
-                elif isinstance(cs, list):
-                    for item in cs:
-                        name = item.get("name", "")
-                        size = item.get("size", "")
-                        ctime = item.get("cached_time", "")
-                        entries.append((name, size, ctime))
-                
+                if self.current_table == "cs":
+                    if isinstance(cs, dict):
+                        for name, meta in cs.items():
+                            size = meta.get("size", "")
+                            ctime = meta.get("cached_time", "")
+                            entries.append((name, size, ctime))
+                    elif isinstance(cs, list):
+                        for item in cs:
+                            name = item.get("name", "")
+                            size = item.get("size", "")
+                            ctime = item.get("cached_time", "")
+                            entries.append((name, size, ctime))
+                elif self.current_table == "pit":
+                    if isinstance(pit, dict):
+                        for name, entry in pit.items():
+                            face = entry.get("face", "")
+                            time_val = entry.get("time", "")
+                            entries.append((name, face, time_val))
+
                 self.table.setRowCount(len(entries))
-                for r, (name, size, ctime) in enumerate(entries):
-                    self.table.setItem(r, 0, QTableWidgetItem(str(name)))
-                    self.table.setItem(r, 1, QTableWidgetItem(str(size)))
-                    self.table.setItem(r, 2, QTableWidgetItem(str(ctime)))
+                for r, (col1, col2, col3) in enumerate(entries):
+                    self.table.setItem(r, 0, QTableWidgetItem(str(col1)))
+                    self.table.setItem(r, 1, QTableWidgetItem(str(col2)))
+                    self.table.setItem(r, 2, QTableWidgetItem(str(col3)))
             except Exception:
                 pass
             
