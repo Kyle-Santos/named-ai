@@ -1,6 +1,7 @@
 # node_runner.py
 import os, sys, socket, json, time, threading, queue, argparse
-import NamedAI as NN  
+import NamedAI as NN
+import functions
 
 SEND_QUEUE = queue.Queue()
 PROCESSOR_QUEUE = queue.Queue()
@@ -39,6 +40,25 @@ def load_node_config(config_path: str, node_name: str):
     NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
     NN.initialiaze_content_store(node_config.get("storage", ""))
 
+    if "detect" in node_config.get("functions", []):
+        functions.load_mtcnn()
+        FUNCTIONS = {
+            "detect": functions.detect,
+            "grayscale": functions.grayscale,
+            "resize": functions.resize
+        }
+    else:
+        FUNCTIONS = {
+            "grayscale": functions.grayscale,
+            "resize": functions.resize
+        }
+
+    for key, func in FUNCTIONS.items():
+        if key in node_config.get("functions", []):
+            NN.FUNCTIONS_TABLE[key] = func
+
+    print(NN.FUNCTIONS_TABLE)
+
     return node_config
 
 
@@ -70,7 +90,7 @@ def processor_thread(gui_callback=None):
                     gui_callback("ERROR", msg)
                 continue
 
-            msg = f"Processing {parsed['type']} packet ({parsed['name']}) from {face} ({addr})"
+            msg = f"Processing {parsed['type']} packet \"{parsed['name']}\" from {face} ({addr})"
             print(f"\n{msg}")
             if gui_callback:
                 gui_callback("INFO", msg)
@@ -80,9 +100,9 @@ def processor_thread(gui_callback=None):
                 if parsed["type"] == "interest":                
                     # Process Interest
                     NN.process_interest(parsed, addr, sock, SEND_QUEUE=SEND_QUEUE, interface=face)
-                elif parsed["type"] == "data":               
+                elif parsed["type"] == "data":         
                     # Process Data 
-                    NN.process_data(parsed, raw_packet, sock, SEND_QUEUE=SEND_QUEUE)                
+                    NN.process_data(parsed, raw_packet, sock, SEND_QUEUE=SEND_QUEUE)
             except Exception as e:
                 msg = f"[Processor] Error processing packet: {e}"
                 print(msg)
@@ -158,23 +178,23 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
 
     # Start receiver threads
     for face, entry in interfaces.items():
-        t = threading.Thread(target=receiver, args=(face, entry, gui_callback), daemon=True, name=f"Receiver-{face}")
+        t = threading.Thread(target=receiver, args=(face, entry, gui_callback), daemon=False, name=f"Receiver-{face}")
         t.start()
 
     # Start global processor thread - PROCESS ALL PACKETS
     t = threading.Thread(
         target=processor_thread,
         args=(gui_callback,),
-        daemon=True,
+        daemon=False,
         name="Processor"
     )
     t.start()
 
     # Start sender thread
-    threading.Thread(target=sender, args=(gui_callback,), daemon=True, name="Sender").start()
+    threading.Thread(target=sender, args=(gui_callback,), daemon=False, name="Sender").start()
 
     # Start PIT cleanup thread
-    threading.Thread(target=pit_cleanup_worker, args=(gui_callback,), daemon=True, name="PIT_Cleanup").start()
+    threading.Thread(target=pit_cleanup_worker, args=(gui_callback,), daemon=False, name="PIT_Cleanup").start()
 
     # Keep alive
     try:
@@ -183,20 +203,6 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
     except KeyboardInterrupt:
         print("\nShutting down node...")
 
-
-
-
-    # Start receiver threads
-    for face, entry in interfaces.items():
-        t = threading.Thread(target=receiver_client, 
-                             args=(face, entry, gui_callback))
-        t.start()
-
-    # Start PIT cleanup thread
-    threading.Thread(target=pit_cleanup_worker, args=(gui_callback,), daemon=True).start()
-
-    # Start sender thread
-    threading.Thread(target=sender, args=(gui_callback,), daemon=True, name="Sender").start()
 
 
 def pit_cleanup_worker(gui_callback=None):
@@ -371,14 +377,15 @@ if GUI_AVAILABLE:
             
             bottom.addStretch(1)
             
+            self.cmd = QLineEdit()
+            self.cmd.setPlaceholderText("Enter command (e.g., send interest /dlsu/ccs/img21)")
+            self.cmd.returnPressed.connect(self.handle_command)
             if self.start_mode == "client":
-                self.cmd = QLineEdit()
-                self.cmd.setPlaceholderText("Enter command (e.g., send interest /dlsu/ccs/img21)")
-                self.cmd.returnPressed.connect(self.handle_command)
                 bottom.addWidget(self.cmd, 3)
-                
-                self.exec_btn = QPushButton("EXECUTE")
-                self.exec_btn.clicked.connect(self.handle_command)
+            
+            self.exec_btn = QPushButton("EXECUTE")
+            self.exec_btn.clicked.connect(self.handle_command)
+            if self.start_mode == "client":
                 bottom.addWidget(self.exec_btn)
             
             root.addLayout(bottom)
@@ -423,7 +430,7 @@ if GUI_AVAILABLE:
                     import traceback
                     traceback.print_exc()
             
-            t = threading.Thread(target=backend_wrapper, daemon=True)
+            t = threading.Thread(target=backend_wrapper, daemon=False)
             t.start()
 
 

@@ -37,22 +37,24 @@ def resize(image_bytes: bytes) -> bytes:
         print(f"[ERROR] Resize failed: {e}")
         return image_bytes  # fallback
 
-print("[INFO] Loading face detector model...")
 # Redirect stderr to null temporarily
 stderr_fileno = sys.stderr
 sys.stderr = open(os.devnull, "w")
 
-try:
-    detector = MTCNN()
-    print("[INFO] Face detector model loaded successfully.")
-except Exception as e:
-    print(f"[ERROR] Could not load MTCNN model: {e}")
-    detector = None
-finally:
-    sys.stderr.close()
-    sys.stderr = stderr_fileno
 
-def detect_face(image_bytes: bytes) -> bytes:
+detector = None
+
+def load_mtcnn():
+    global detector
+    try:
+        print("[INFO] Loading face detector model...")
+        detector = MTCNN()
+        print("[INFO] Face detector model loaded successfully.")
+    except Exception as e:
+        print(f"[ERROR] Could not load MTCNN model: {e}")
+
+
+def detect(image_bytes: bytes) -> bytes:
     """
     Detects a face and returns the cropped whole face as encoded image bytes.
     
@@ -62,32 +64,35 @@ def detect_face(image_bytes: bytes) -> bytes:
     Returns:
         bytes: Cropped face as encoded bytes (same format as input), or original bytes if no face detected.
     """
-    
     if detector is None:
-        print("[ERROR] Detector not available. Cannot process image.")
-        return None
+        print("[ERROR] Face detector not available")
+        return image_bytes
+
     try:
         # Decode image
-        img = Image.open(BytesIO(image_bytes)).convert("RGB")
+        img = Image.open(BytesIO(image_bytes))
         format = img.format or "PNG"
+        img = img.convert("RGB")  # ensure 3-channel
 
-         # Convert to numpy for MTCNN
+        # Convert to numpy for MTCNN
         image_np = np.asarray(img)
 
         # detect face
         faces = detector.detect_faces(image_np)
         if not faces:
             print("[INFO] No face detected, returning original")
-            return None  # No face detected
+            return image_bytes  # No face detected
 
         face_data = faces[0]  # Assume one face per image for simplicity
-        x, y, width, height = face_data['box']
+        x, y, width, height = [int(abs(v)) for v in face_data['box']]
 
         # Ensure box coordinates are within image bounds
         x, y = max(0, x), max(0, y)
+        x2 = min(x + width, img.width)
+        y2 = min(y + height, img.height)
 
         # Crop face
-        cropped_face = img.crop((x, y, x + width, y + height))
+        cropped_face = img.crop((x, y, x2, y2))
 
         # Encode back to bytes
         buf = BytesIO()

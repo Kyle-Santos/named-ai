@@ -7,8 +7,7 @@
                 { "face": "face0", "port": 9001 }
             ],
             "FIB": {
-                "/dlsu": { "face": "face0", "port": 9008 },
-                "/dlsu/goks": { "face": "face0", "port": 9010 }
+                "/dlsu": { "face": "face0", "port": 9008 }
             },
             "storage": "client_node/storage/"
         },
@@ -22,7 +21,8 @@
             "FIB": {
                 "/dlsu/goks": { "face": "face1", "port": 9010 }
             },
-            "storage": "nfn_nodes/dlsu/"
+            "storage": "nfn_nodes/dlsu/",
+            "functions": ["grayscale"]
         },
 
         {
@@ -35,7 +35,8 @@
                 "/dlsu": { "face": "face0", "port": 9009 },
                 "/dlsu/goks/cam": { "face": "face1", "port": 9012 }
             },
-            "storage": "nfn_nodes/goks/"
+            "storage": "nfn_nodes/goks/",
+            "functions": ["detect"]
         },
 
         {
