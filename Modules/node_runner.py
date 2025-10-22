@@ -38,7 +38,7 @@ def load_node_config(config_path: str, node_name: str):
     NN.NODE_NAME = node_config["name"]
     NN.FIB = node_config.get("FIB", {})
     NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
-    NN.initialiaze_content_store(node_config.get("storage", ""))
+    NN.initialize_content_store(node_config.get("storage", ""))
 
     if "detect" in node_config.get("functions", []):
         functions.load_mtcnn()
@@ -75,7 +75,7 @@ def processor_thread(gui_callback=None):
     while True:
         try:
             # Get packet from queue (with timeout to allow periodic cleanup)
-            packet_info = PROCESSOR_QUEUE.get(timeout=0.5)
+            packet_info = PROCESSOR_QUEUE.get()
 
             raw_packet = packet_info["raw_packet"]
             sock = packet_info["sock"]
@@ -110,6 +110,8 @@ def processor_thread(gui_callback=None):
                     gui_callback("ERROR", msg)       
         except queue.Empty:
             # Queue empty - do cleanup tasks
+            msg = f"[OMG] Critical error: {e}"
+            print(msg)
             continue      
         except Exception as e:
             msg = f"[Processor] Critical error: {e}"
@@ -176,10 +178,13 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
     if gui_callback:
         gui_callback("SUCCESS", msg)
 
+    threads = []
+
     # Start receiver threads
     for face, entry in interfaces.items():
         t = threading.Thread(target=receiver, args=(face, entry, gui_callback), daemon=False, name=f"Receiver-{face}")
         t.start()
+        threads.append(t)
 
     # Start global processor thread - PROCESS ALL PACKETS
     t = threading.Thread(
@@ -189,12 +194,27 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
         name="Processor"
     )
     t.start()
+    threads.append(t)
 
     # Start sender thread
     threading.Thread(target=sender, args=(gui_callback,), daemon=False, name="Sender").start()
 
     # Start PIT cleanup thread
     threading.Thread(target=pit_cleanup_worker, args=(gui_callback,), daemon=False, name="PIT_Cleanup").start()
+
+    # Monitor threads
+    def thread_monitor():
+        while True:
+            time.sleep(5)
+            for t in threads:
+                if not t.is_alive():
+                    msg = f"[CRITICAL] Thread {t.name} has died!"
+                    print(msg)
+                    if gui_callback:
+                        gui_callback("ERROR", msg)
+
+    monitor_thread = threading.Thread(target=thread_monitor, daemon=True, name="Monitor")
+    monitor_thread.start()
 
     # Keep alive
     try:
