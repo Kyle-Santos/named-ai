@@ -22,7 +22,7 @@
                 "/dlsu/goks": { "face": "face1", "port": 9010 }
             },
             "storage": "nfn_nodes/dlsu/",
-            "functions": ["grayscale"]
+            "functions": ["grayscale", "resize"]
         },
 
         {

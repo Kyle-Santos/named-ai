@@ -198,6 +198,7 @@ def store_interest(name, face, addr, funcs=None, waiting_for=None):
             }
 
 def store_data(name, path):
+    """Store data in the Content Store (CS)."""
     if len(CS) >= CS_SIZE:
         # Evict the oldest entry
         oldest_name = min(CS.keys(), key=lambda k: CS[k]["timestamp"])
@@ -206,9 +207,11 @@ def store_data(name, path):
     CS[name] = {"path": path, "timestamp": time.time()}
 
 def lookup_content(name):
+    """Look up content in the Content Store (CS)."""
     return CS.get(name, None)
 
 def initialize_content_store(storage_path):
+    """Load existing content from storage into the Content Store (CS)."""
     global STORAGE_PATH
     STORAGE_PATH = storage_path
 
@@ -389,6 +392,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             pit_entry = entry
             waiting_for_name = name
             name = entry_name  # use the NFN name for forwarding
+            log("INFO", f"Data for '{waiting_for_name}' is awaited by NFN Interest '{name}'")
             break
         
     if pit_entry is None:
@@ -402,6 +406,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
     for face in pit_entry["interface"]:
         # Check if this node requested the data
         if face == None or waiting_for_name: 
+            log("INFO", f"Node requested the data")
             # if node did request -> handle reassembly (if fragmented) -> process
             if frag_total:  # fragmented packet
                 # Thread-safe fragment buffer access
@@ -410,7 +415,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
 
                 FRAG_BUFFER[name]["frags"][frag_num] = data
 
-                if len(FRAG_BUFFER[name]["frags"]) == frag_total:
+                if len(FRAG_BUFFER[name]["frags"]) == frag_total and waiting_for_name:
                     # how would i know that this name will be used for another request
                     # for now it will be inefficient, needs optimization
                     # Reassemble
@@ -467,6 +472,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                 should_delete_pit = True
         else:
             log("INFO", f"\n\nElse happened\n\n")
+            save_data_to_file(name, data)
             should_delete_pit = True
 
     if should_delete_waiting_for_in_pit and waiting_for_name in PIT:
@@ -474,8 +480,9 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
 
     # Clean up PIT entry after processing ALL faces
     if should_delete_pit and name in PIT:
-        # cleanup buffer
-        del FRAG_BUFFER[name] 
+        if name in FRAG_BUFFER:
+            # cleanup buffer
+            del FRAG_BUFFER[name] 
 
         PIT.pop(name)
         log("INFO", f"Removed PIT entry for '{name}' after processing.")

@@ -10,6 +10,16 @@ from io import BytesIO
   
 TARGET_SIZE = (112, 112)  # Width x Height - Standard size for MobileFaceNet
 
+# create a function that will allow functions.get_function(func_name)
+def get_function(func_name: str):
+    """Retrieve function by name."""
+    functions_map = {
+        "resize": resize,
+        "detect": detect,
+        "grayscale": grayscale,
+    }
+    return functions_map.get(func_name, None)
+
 def resize(image_bytes: bytes) -> bytes:
     """
     Resize an image (bytes) to TARGET_SIZE and return encoded bytes.

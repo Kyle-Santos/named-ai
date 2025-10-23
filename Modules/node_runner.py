@@ -40,22 +40,10 @@ def load_node_config(config_path: str, node_name: str):
     NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
     NN.initialize_content_store(node_config.get("storage", ""))
 
-    if "detect" in node_config.get("functions", []):
-        functions.load_mtcnn()
-        FUNCTIONS = {
-            "detect": functions.detect,
-            "grayscale": functions.grayscale,
-            "resize": functions.resize
-        }
-    else:
-        FUNCTIONS = {
-            "grayscale": functions.grayscale,
-            "resize": functions.resize
-        }
-
-    for key, func in FUNCTIONS.items():
-        if key in node_config.get("functions", []):
-            NN.FUNCTIONS_TABLE[key] = func
+    for func_name in node_config.get("functions", []):
+        if func_name == "detect":
+            functions.load_mtcnn()
+        NN.FUNCTIONS_TABLE[func_name] = functions.get_function(func_name)
 
     print(NN.FUNCTIONS_TABLE)
 
@@ -287,7 +275,7 @@ if GUI_AVAILABLE:
             self.node_name = node_name
             
             self.setWindowTitle(f"NDN Node Monitor - {node_name}")
-            self.resize(1100, 720)
+            self.resize(550, 360)
             
             # Try to load stylesheet, fallback to basic styling
             try:
