@@ -140,5 +140,31 @@ def grayscale(image_bytes: bytes) -> bytes:
     except Exception as e:
         print(f"[ERROR] Grayscale conversion failed: {e}")
         return image_bytes  # fallback: return original
-    
 
+
+def normalize(image_bytes: bytes) -> bytes:
+    """
+    Preprocess image for face embedding models (InsightFace, OpenFace, MobileFaceNet).
+    Converts to RGB and normalizes to [-1, 1].
+
+    Args:
+        image_bytes (bytes): Input image (JPEG/PNG).
+    
+    Returns:
+        bytes: Normalized image re-encoded as bytes (for inspection) or numpy array (for inference).
+    """
+    try:
+        img = Image.open(BytesIO(image_bytes)).convert("RGB")
+
+        # Convert to NumPy array (HWC)
+        np_img = np.asarray(img).astype(np.float32) / 255.0
+        np_img = (np_img - 0.5) / 0.5  # normalize to [-1, 1]
+
+        # Re-encode back to bytes (optional visualization)
+        np_img_disp = ((np_img + 1) * 127.5).astype(np.uint8)
+        buf = BytesIO()
+        Image.fromarray(np_img_disp).save(buf, format=img.format or "JPEG")
+        return buf.getvalue()
+    except Exception as e:
+        print(f"[ERROR] Normalization failed: {e}")
+        return image_bytes
