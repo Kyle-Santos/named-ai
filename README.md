@@ -28,4 +28,5 @@ interest_name="/dlsu/goks/detect(/dlsu/goks/cam/capture8.jpg)"
 ## ML Model Specifications
 ### ArcFace/InsightFace
 Minimum size of images must be 512px x 512px 
+
 Will only accept non-grayscale images (model is trained on RGB images)
