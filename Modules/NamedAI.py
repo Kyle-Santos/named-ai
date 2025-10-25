@@ -11,9 +11,12 @@ LOGS = []
 
 def log(level, message, path=""):
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    entry = {"level": level, "message": message, "path": path, "timestamp": timestamp}
+    level_upper = level.upper()
+    if level_upper not in ["INFO", "WARN", "ERROR", "SUCCESS"]:
+        level_upper = "INFO"  # default to INFO if invalid level
+    entry = {"level": level_upper, "message": message, "path": path, "timestamp": timestamp}
     LOGS.append(entry)
-    print(f"\n[{timestamp}] [{level}] {message}" + (f" {path}" if path else ""))
+    print(f"\n[{timestamp}] [{level_upper}] {message}" + (f" {path}" if path else ""))
 
 
 
@@ -276,7 +279,7 @@ def cleanup_expired_pit_entries():
             
             if age > INTEREST_LIFETIME:
                 expired_names.append(name)
-                print(f"[PIT Timeout] Interest '{name}' expired after {age:.2f}s")
+                log("INFO", f"Interest '{name}' expired after {age:.2f}s")
 
         for name in expired_names:
             PIT.pop(name)
@@ -356,12 +359,12 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
 
                 # Build Interest packet
                 interest_packet = build_interest_packet(name)
-                print(f"\n[DEBUG] Raw Interest Packet: {interest_packet}")
-                print(f"[DEBUG] Packet Size: {len(interest_packet)} bytes")
+                log("INFO", f"Raw Interest Packet: {interest_packet}")
+                log("INFO", f"Packet Size: {len(interest_packet)} bytes")
 
                 # store interest to PIT
                 store_interest(name, interface, addr)
-                print(f"\n\n{PIT}")
+                log("INFO", f"PIT: {PIT}")
 
                 # send
                 log("INFO", f"Sending Interest for '{name}'")
