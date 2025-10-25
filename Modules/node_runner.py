@@ -424,10 +424,13 @@ if GUI_AVAILABLE:
 
         def set_table_headers(self, mode: str):
             if mode == "pit":
+                self.table.setColumnCount(3) 
                 headers = ["NAME", "FACE", "TIME"]
             elif mode == "cs":
-                headers = ["NAME", "SIZE", "CACHED TIME"]
+                self.table.setColumnCount(2)
+                headers = ["NAME", "CACHED TIME"]
             else:
+                self.table.setColumnCount(3) 
                 headers = ["NAME", "VALUE1", "VALUE2"]
             self.table.setHorizontalHeaderLabels(headers)
 
@@ -545,27 +548,33 @@ if GUI_AVAILABLE:
                 if self.current_table == "cs":
                     if isinstance(cs, dict):
                         for name, meta in cs.items():
-                            size = meta.get("size", "")
-                            ctime = meta.get("cached_time", "")
-                            entries.append((name, size, ctime))
+                            # size = meta.get("size", "")
+                            ctime = meta.get("timestamp", "")
+                            entries.append((name, time.strftime('%H:%M:%S', time.localtime(ctime))))
                     elif isinstance(cs, list):
                         for item in cs:
                             name = item.get("name", "")
-                            size = item.get("size", "")
-                            ctime = item.get("cached_time", "")
-                            entries.append((name, size, ctime))
+                            # size = item.get("size", "")
+                            ctime = item.get("timestamp", "")
+                            entries.append((name, time.strftime('%H:%M:%S', time.localtime(ctime))))
                 elif self.current_table == "pit":
                     if isinstance(pit, dict):
                         for name, entry in pit.items():
-                            face = entry.get("face", "")
+                            face = entry.get("interface", "")
                             time_val = entry.get("time", "")
-                            entries.append((name, face, time_val))
+                            entries.append((name, face, time.strftime('%H:%M:%S', time.localtime(time_val))))
 
                 self.table.setRowCount(len(entries))
-                for r, (col1, col2, col3) in enumerate(entries):
-                    self.table.setItem(r, 0, QTableWidgetItem(str(col1)))
-                    self.table.setItem(r, 1, QTableWidgetItem(str(col2)))
-                    self.table.setItem(r, 2, QTableWidgetItem(str(col3)))
+
+                if self.current_table == "cs":
+                    for r, (col1, col2) in enumerate(entries):
+                        self.table.setItem(r, 0, QTableWidgetItem(str(col1)))
+                        self.table.setItem(r, 1, QTableWidgetItem(str(col2)))
+                else:
+                    for r, (col1, col2, col3) in enumerate(entries):
+                        self.table.setItem(r, 0, QTableWidgetItem(str(col1)))
+                        self.table.setItem(r, 1, QTableWidgetItem(str(col2)))
+                        self.table.setItem(r, 2, QTableWidgetItem(str(col3)))
             except Exception:
                 pass
             
