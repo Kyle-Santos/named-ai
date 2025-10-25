@@ -213,6 +213,11 @@ def lookup_content(name):
     """Look up content in the Content Store (CS)."""
     return CS.get(name, None)
 
+def update_CS_timestamp(name):
+    """Update the timestamp of a CS entry to mark it as recently used."""
+    if name in CS:
+        CS[name]["timestamp"] = time.time()
+
 def initialize_content_store(storage_path):
     """Load existing content from storage into the Content Store (CS)."""
     global STORAGE_PATH
@@ -304,6 +309,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     # First check Content Store
     cached_data = lookup_content(name)
     if cached_data:
+        update_CS_timestamp(name)
         bytes = process_name_request(cached_data["path"])
         response = build_data_packet(name, bytes)
 
@@ -326,6 +332,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
 
             cached_data = lookup_content(base_name)
             if cached_data:
+                update_CS_timestamp(base_name)
                 bytes = process_name_request(cached_data["path"])
                 response = build_data_packet(base_name, bytes)
                 log("INFO", f"Cached content found for base name '{base_name}'")
@@ -379,128 +386,167 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
     """Process Data Packet"""
     name = packet["name"]
     data = packet["data"]
-
     frag_num = packet.get("frag_num")
     frag_total = packet.get("frag_total")
 
-
-    pit_entry = None
-    waiting_for_name = None
-    if name in PIT:
-        pit_entry = PIT[name]
-
-    # find the entry that is waiting for this data
-    for entry_name, entry in PIT.items():
-        if entry["waiting_for"] == name:
-            pit_entry = entry
-            waiting_for_name = name
-            name = entry_name  # use the NFN name for forwarding
-            log("INFO", f"Data for '{waiting_for_name}' is awaited by NFN Interest '{name}'")
-            break
+    # Find the relevant PIT entry
+    pit_entry, original_name, waiting_for_name = find_pit_entry(name)
         
     if pit_entry is None:
         log("WARN", f"No PIT entry for {name}, dropping")
         return
     
     # Track if we should delete PIT entry at the end
-    should_delete_pit = False
-    should_delete_waiting_for_in_pit = False
+    cleanup_flags = {
+        "delete_pit": False,
+        "delete_waiting_for": False
+    }
     
     for face in pit_entry["interface"]:
-        # Check if this node requested the data
-        if face == None or waiting_for_name: 
-            log("INFO", f"Node requested the data")
-            # if node did request -> handle reassembly (if fragmented) -> process
-            if frag_total:  # fragmented packet
-                # Thread-safe fragment buffer access
+        if should_process_locally(face, waiting_for_name):
+            processed_data = handle_local_processing(
+                original_name, waiting_for_name, data,
+                frag_num, frag_total, pit_entry, 
+                SEND_QUEUE, cleanup_flags
+            )     
+        else: # Handle Packet Forwarding case
+            # Fragmented data
+            if frag_total:
                 if name not in FRAG_BUFFER:
-                    FRAG_BUFFER[name] = {"frags": {}, "expected": None}
+                    FRAG_BUFFER[name] = {"frags": {}, "expected": frag_total}
 
-                FRAG_BUFFER[name]["frags"][frag_num] = data
+                if frag_num not in FRAG_BUFFER[name]["frags"]:
+                    FRAG_BUFFER[name]["frags"][frag_num] = data
 
-                if len(FRAG_BUFFER[name]["frags"]) == frag_total and waiting_for_name:
-                    # how would i know that this name will be used for another request
-                    # for now it will be inefficient, needs optimization
-                    # Reassemble
-                    full_data = reassemble_fragments(name, frag_total)
+                # Forward the fragment
+                SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
+                log("INFO", f"Forwarding fragment {frag_num}/{frag_total} for {name} to {PIT_MAPPING[face]}")
 
-                    if lookup_content(waiting_for_name) is None:
-                        save_data_to_file(waiting_for_name, full_data)
-                    should_delete_waiting_for_in_pit = True
+                # Cache if all fragments received
+                if len(FRAG_BUFFER[name]["frags"]) == frag_total:
+                    reassembled_data = reassemble_fragments(name, frag_total)
+                    cleanup_flags["delete_pit"] = True
+                    processed_data = reassembled_data  # Return to be saved once
+                
+                processed_data = None
+            # Non-fragmented data
+            else:
+                SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
+                log("INFO", f"Forwarding packet for {original_name} to {PIT_MAPPING[face]}")
+                cleanup_flags["delete_pit"] = True
+                processed_data = data
 
-                    entry = get_PIT_entry(name)
-                    for func_name in entry["funcs"]:
-                        log("INFO", f"Applying function: {func_name}")
+    # Save data after all processing
+    if processed_data is not None and cleanup_flags["delete_pit"]:
+        save_data_to_file(original_name, processed_data)
+        log("INFO", f"Saved processed data for '{original_name}'")
 
-                        if func_name not in FUNCTIONS_TABLE:
-                            log("ERROR", f"Function '{func_name}' not found in FUNCTIONS_TABLE")
-                            continue
-
-                        func = FUNCTIONS_TABLE[func_name]
-                        full_data = func(full_data)
-
-                    response = build_data_packet(name, full_data)
-                    for forward_face in entry["interface"]:
-                        SEND_QUEUE.put((
-                            INTERFACES[forward_face]["sock"], 
-                            PIT_MAPPING[forward_face], 
-                            response
-                        ))
-
-                    log("INFO", f"Processed NFN '{name}' and sent to {entry['interface']}")
-                    save_data_to_file(name, full_data)
-                    should_delete_pit = True
-                    continue
-
-
-        # === Forwarding case ===
-        # This node didn’t request → just forward (fragment untouched)
-        else:
-            # send
-            SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
-            log("INFO", f"Forwarding packet for {name} to {PIT_MAPPING[face]}")
-    
-        # store_data(name, full_data.decode()) # i think need to reassemble for caching or no?
-        if frag_total:
-            if name not in FRAG_BUFFER:
-                FRAG_BUFFER[name] = {"frags": {}, "expected": None}
-
-            if frag_num not in FRAG_BUFFER[name]["frags"]:
-                FRAG_BUFFER[name]["frags"][frag_num] = data
-
-            if frag_total == len(FRAG_BUFFER[name]["frags"]):
-                reassembled_data = reassemble_fragments(name, frag_total)
-                save_data_to_file(name, reassembled_data)
-
-                should_delete_pit = True
-        else:
-            log("INFO", f"\n\nElse happened\n\n")
-            save_data_to_file(name, data)
-            should_delete_pit = True
-
-    if should_delete_waiting_for_in_pit and waiting_for_name in PIT:
+    # Cleanup after all processing
+    if cleanup_flags["delete_waiting_for"] and waiting_for_name in PIT:
         PIT.pop(waiting_for_name)
 
-    # Clean up PIT entry after processing ALL faces
-    if should_delete_pit and name in PIT:
-        if name in FRAG_BUFFER:
+    if cleanup_flags["delete_pit"] and original_name in PIT:
+        if original_name in FRAG_BUFFER:
             # cleanup buffer
-            del FRAG_BUFFER[name] 
+            del FRAG_BUFFER[original_name] 
 
-        PIT.pop(name)
-        log("INFO", f"Removed PIT entry for '{name}' after processing.")
+        PIT.pop(original_name)
+        log("INFO", f"Removed PIT entry for '{original_name}' after processing.")
 
-    return should_delete_pit
+    return cleanup_flags["delete_pit"]
+
+
+def find_pit_entry(name):
+    """Find PIT entry for the given name or waiting_for relationship"""
+    pit_entry = None
+    waiting_for_name = None
+    original_name = name
+
+    # Direct match
+    if name in PIT:
+        pit_entry = PIT[name]
+        return pit_entry, original_name, waiting_for_name
+
+    # Check if any entry is waiting for this data (NFN case)
+    for entry_name, entry in list(PIT.items()):
+        if entry.get("waiting_for") == name:
+            pit_entry = entry
+            waiting_for_name = name
+            original_name = entry_name
+            log("INFO", f"Data for '{waiting_for_name}' is awaited by NFN Interest '{original_name}'")
+            break
+
+    return pit_entry, original_name, waiting_for_name
+
+
+def should_process_locally(face, waiting_for_name):
+    """Determine if data should be processed locally or forwarded"""
+    return face is None or waiting_for_name is not None
+
+
+def handle_local_processing(name, waiting_for_name, data, frag_num, frag_total, 
+                            pit_entry, SEND_QUEUE, cleanup_flags):
+    """Handle local data processing"""
+    log("INFO", "Node requested the data - processing locally")
+
+    if frag_total:
+        # Fragmented data
+        return handle_fragmented_local_processing(
+            name, waiting_for_name, data, frag_num, frag_total,
+            pit_entry, SEND_QUEUE, cleanup_flags
+        )
+    else:
+        # Non-fragmented data
+        log("INFO", f"Received non-fragmented data for {name}")
+
+        if waiting_for_name:
+            return process_nfn_request(
+                name, waiting_for_name, data,
+                pit_entry, SEND_QUEUE, cleanup_flags
+            )
+
+        # no NFN
+        cleanup_flags["delete_pit"] = True
+        return data 
+
+
+def handle_fragmented_local_processing(name, waiting_for_name, data, frag_num, 
+                                       frag_total, pit_entry, SEND_QUEUE, cleanup_flags):
+    """Handle fragmented data for local processing"""
+    # Initialize fragment buffer
+    if name not in FRAG_BUFFER:
+        FRAG_BUFFER[name] = {"frags": {}, "expected": frag_total}
+
+    FRAG_BUFFER[name]["frags"][frag_num] = data
+
+    # Check if all fragments received
+    if len(FRAG_BUFFER[name]["frags"]) == frag_total:
+        full_data = reassemble_fragments(name, frag_total)
+
+        # Save original data if this is an NFN request
+        if waiting_for_name:
+            return process_nfn_request(
+                name, waiting_for_name, full_data,
+                pit_entry, SEND_QUEUE, cleanup_flags
+            )
+        else:
+            # Regular fragmented data (no NFN)
+            cleanup_flags["delete_pit"] = True
+            return full_data 
+    
+    return None  # Not all fragments received yet
 
 
 # Reassemble fragments
 def reassemble_fragments(name, frag_total):
+    """Reassemble fragments for a given name."""
     full_data = b"".join(FRAG_BUFFER[name]["frags"][i] for i in range(1, frag_total+1))
     log("INFO", f"Reassembled data for '{name}'")
     return full_data
 
 
 def save_data_to_file(name, data_bytes):
+    """Save data bytes to a file and store in CS."""
     filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_')) + ".jpg"
     store_data(name, filename)
     with open(filename, "wb") as f:
@@ -538,11 +584,56 @@ def parse_nfn_expression(expr: str):
     return base_name, funcs + [func]
 
 
-# def process_node_function(name):
-    # if re.search(r"\(.?\)", name):
-        # 
+def process_nfn_request(name, waiting_for_name, full_data, pit_entry, 
+                       SEND_QUEUE, cleanup_flags):
+    """Process Named Function Networking request"""
+    # Save the original data
+    if lookup_content(waiting_for_name) is None:
+        save_data_to_file(waiting_for_name, full_data)
+    cleanup_flags["delete_waiting_for"] = True
+
+    # Apply functions in the pipeline
+    processed_data = apply_function_pipeline(name, full_data, pit_entry)
+
+    # Send processed results back
+    response = build_data_packet(name, processed_data)
+
+    for forward_face in pit_entry["interface"]:
+        if forward_face is not None and forward_face in INTERFACES:
+            SEND_QUEUE.put((
+                INTERFACES[forward_face]["sock"],
+                PIT_MAPPING.get(forward_face),
+                response
+            ))
+    
+    log("INFO", f"Processed NFN '{name}' and sent to {pit_entry['interface']}")
+
+    cleanup_flags["delete_pit"] = True
+    return processed_data
 
 
+def apply_function_pipeline(name, data, pit_entry):
+    """Apply all functions in the NFN pipeline"""
+    processed_data = data
+
+    for func_name in pit_entry.get("funcs", []):
+        log("INFO", f"Applying function: {func_name}")
+
+        if func_name not in FUNCTIONS_TABLE:
+            log("ERROR", f"Function '{func_name}' not found in FUNCTIONS_TABLE")
+            continue
+
+        try:
+            func = FUNCTIONS_TABLE[func_name]
+            processed_data = func(processed_data)
+            log("INFO", f"Function '{func_name}' completed successfully")
+        except Exception as e:
+            log("ERROR", f"Function '{func_name}' failed: {e}")
+            import traceback
+            traceback.print_exc()
+            # Continue with unprocessed data
+
+    return processed_data
 
 
 ###################
