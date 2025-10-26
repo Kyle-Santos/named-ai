@@ -8,3 +8,9 @@ numpy
 scikit-learn  # for evaluation metrics
 matplotlib    # for visualization
 PyQt5
+
+# for ML Processing
+numpy 
+opencv-python 
+onnxruntime
+insightface

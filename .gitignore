@@ -7,3 +7,6 @@ Modules/nfn_nodes/andrew/*
 Modules/nfn_nodes/velasco/*
 data-preprocessing/Face_Dataset
 *.pyc
+
+ML-models/model1_insightface/insightface
+ML-models/model1_insightface/onnxruntime
