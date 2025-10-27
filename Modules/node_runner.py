@@ -1,6 +1,7 @@
 # node_runner.py
 import os, sys, socket, json, time, threading, queue, argparse
-import NamedAI as NN  
+import NamedAI as NN
+import functions
 
 SEND_QUEUE = queue.Queue()
 PROCESSOR_QUEUE = queue.Queue()
@@ -37,7 +38,14 @@ def load_node_config(config_path: str, node_name: str):
     NN.NODE_NAME = node_config["name"]
     NN.FIB = node_config.get("FIB", {})
     NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
-    NN.initialiaze_content_store(node_config.get("storage", ""))
+    NN.initialize_content_store(node_config.get("storage", ""))
+
+    for func_name in node_config.get("functions", []):
+        if func_name == "detect":
+            functions.load_mtcnn()
+        NN.FUNCTIONS_TABLE[func_name] = functions.get_function(func_name)
+
+    print(NN.FUNCTIONS_TABLE)
 
     return node_config
 
@@ -55,7 +63,7 @@ def processor_thread(gui_callback=None):
     while True:
         try:
             # Get packet from queue (with timeout to allow periodic cleanup)
-            packet_info = PROCESSOR_QUEUE.get(timeout=0.5)
+            packet_info = PROCESSOR_QUEUE.get()
 
             raw_packet = packet_info["raw_packet"]
             sock = packet_info["sock"]
@@ -70,7 +78,7 @@ def processor_thread(gui_callback=None):
                     gui_callback("ERROR", msg)
                 continue
 
-            msg = f"Processing {parsed['type']} packet ({parsed['name']}) from {face} ({addr})"
+            msg = f"Processing {parsed['type']} packet \"{parsed['name']}\" from {face} ({addr})"
             print(f"\n{msg}")
             if gui_callback:
                 gui_callback("INFO", msg)
@@ -80,9 +88,9 @@ def processor_thread(gui_callback=None):
                 if parsed["type"] == "interest":                
                     # Process Interest
                     NN.process_interest(parsed, addr, sock, SEND_QUEUE=SEND_QUEUE, interface=face)
-                elif parsed["type"] == "data":               
+                elif parsed["type"] == "data":         
                     # Process Data 
-                    NN.process_data(parsed, raw_packet, sock, SEND_QUEUE=SEND_QUEUE)                
+                    NN.process_data(parsed, raw_packet, sock, SEND_QUEUE=SEND_QUEUE)
             except Exception as e:
                 msg = f"[Processor] Error processing packet: {e}"
                 print(msg)
@@ -90,6 +98,8 @@ def processor_thread(gui_callback=None):
                     gui_callback("ERROR", msg)       
         except queue.Empty:
             # Queue empty - do cleanup tasks
+            msg = f"[OMG] Critical error: {e}"
+            print(msg)
             continue      
         except Exception as e:
             msg = f"[Processor] Critical error: {e}"
@@ -156,25 +166,43 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
     if gui_callback:
         gui_callback("SUCCESS", msg)
 
+    threads = []
+
     # Start receiver threads
     for face, entry in interfaces.items():
-        t = threading.Thread(target=receiver, args=(face, entry, gui_callback), daemon=True, name=f"Receiver-{face}")
+        t = threading.Thread(target=receiver, args=(face, entry, gui_callback), daemon=False, name=f"Receiver-{face}")
         t.start()
+        threads.append(t)
 
     # Start global processor thread - PROCESS ALL PACKETS
     t = threading.Thread(
         target=processor_thread,
         args=(gui_callback,),
-        daemon=True,
+        daemon=False,
         name="Processor"
     )
     t.start()
+    threads.append(t)
 
     # Start sender thread
-    threading.Thread(target=sender, args=(gui_callback,), daemon=True, name="Sender").start()
+    threading.Thread(target=sender, args=(gui_callback,), daemon=False, name="Sender").start()
 
     # Start PIT cleanup thread
-    threading.Thread(target=pit_cleanup_worker, args=(gui_callback,), daemon=True, name="PIT_Cleanup").start()
+    threading.Thread(target=pit_cleanup_worker, args=(gui_callback,), daemon=False, name="PIT_Cleanup").start()
+
+    # Monitor threads
+    def thread_monitor():
+        while True:
+            time.sleep(5)
+            for t in threads:
+                if not t.is_alive():
+                    msg = f"[CRITICAL] Thread {t.name} has died!"
+                    print(msg)
+                    if gui_callback:
+                        gui_callback("ERROR", msg)
+
+    monitor_thread = threading.Thread(target=thread_monitor, daemon=True, name="Monitor")
+    monitor_thread.start()
 
     # Keep alive
     try:
@@ -183,20 +211,6 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
     except KeyboardInterrupt:
         print("\nShutting down node...")
 
-
-
-
-    # Start receiver threads
-    for face, entry in interfaces.items():
-        t = threading.Thread(target=receiver_client, 
-                             args=(face, entry, gui_callback))
-        t.start()
-
-    # Start PIT cleanup thread
-    threading.Thread(target=pit_cleanup_worker, args=(gui_callback,), daemon=True).start()
-
-    # Start sender thread
-    threading.Thread(target=sender, args=(gui_callback,), daemon=True, name="Sender").start()
 
 
 def pit_cleanup_worker(gui_callback=None):
@@ -259,9 +273,10 @@ if GUI_AVAILABLE:
             super().__init__()
             self.start_mode = start_mode
             self.node_name = node_name
-            
+            self.current_table = "pit"  # Default to PIT table
+
             self.setWindowTitle(f"NDN Node Monitor - {node_name}")
-            self.resize(1100, 720)
+            self.resize(550, 360)
             
             # Try to load stylesheet, fallback to basic styling
             try:
@@ -350,9 +365,9 @@ if GUI_AVAILABLE:
                 counters.addWidget(w)
             rightlay.addLayout(counters)
             
-            # Content Store Table
+            # Data Structure Table (PIT by default)
             self.table = QTableWidget(0, 3)
-            self.table.setHorizontalHeaderLabels(["NAME", "SIZE", "CACHED TIME"])
+            self.set_table_headers("pit")
             self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
             self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
             self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
@@ -363,22 +378,23 @@ if GUI_AVAILABLE:
             # Bottom Command Bar
             bottom = QHBoxLayout()
             bottom.setSpacing(8)
-            
-            for label in ["show pit", "show fib", "show cs", "show faces", "clear logs", "stats"]:
+
+            for label in ["show pit", "show cs", "clear logs", "stats"]:
                 b = QPushButton(label)
                 b.clicked.connect(lambda checked=False, t=label: self.quick_command(t))
                 bottom.addWidget(b)
             
             bottom.addStretch(1)
             
+            self.cmd = QLineEdit()
+            self.cmd.setPlaceholderText("Enter command (e.g., send interest /dlsu/ccs/img21)")
+            self.cmd.returnPressed.connect(self.handle_command)
             if self.start_mode == "client":
-                self.cmd = QLineEdit()
-                self.cmd.setPlaceholderText("Enter command (e.g., send interest /dlsu/ccs/img21)")
-                self.cmd.returnPressed.connect(self.handle_command)
                 bottom.addWidget(self.cmd, 3)
-                
-                self.exec_btn = QPushButton("EXECUTE")
-                self.exec_btn.clicked.connect(self.handle_command)
+            
+            self.exec_btn = QPushButton("EXECUTE")
+            self.exec_btn.clicked.connect(self.handle_command)
+            if self.start_mode == "client":
                 bottom.addWidget(self.exec_btn)
             
             root.addLayout(bottom)
@@ -406,6 +422,18 @@ if GUI_AVAILABLE:
             if lab:
                 lab.setText(str(value))
 
+        def set_table_headers(self, mode: str):
+            if mode == "pit":
+                self.table.setColumnCount(3) 
+                headers = ["NAME", "FACE", "TIME"]
+            elif mode == "cs":
+                self.table.setColumnCount(2)
+                headers = ["NAME", "CACHED TIME"]
+            else:
+                self.table.setColumnCount(3) 
+                headers = ["NAME", "VALUE1", "VALUE2"]
+            self.table.setHorizontalHeaderLabels(headers)
+
         def append_log(self, level: str, line: str):
             color = {"SUCCESS": SUCCESS, "INFO": INFO, "WARN": WARN, "ERROR": ERROR}.get(level, INFO)
             ts = datetime.now().strftime("%I:%M:%S %p")
@@ -423,7 +451,7 @@ if GUI_AVAILABLE:
                     import traceback
                     traceback.print_exc()
             
-            t = threading.Thread(target=backend_wrapper, daemon=True)
+            t = threading.Thread(target=backend_wrapper, daemon=False)
             t.start()
 
 
@@ -452,7 +480,13 @@ if GUI_AVAILABLE:
                 
                 if raw.lower().startswith("show "):
                     what = raw.split(" ", 1)[1].strip().lower()
-                    self.show_structure(what)
+                    if what in ("pit", "cs"):
+                        self.current_table = what
+                        self.set_table_headers(what)
+                        self.refresh_stats()
+                        self.append_log("SUCCESS", f"Switched table to {what.upper()}")
+                    else:
+                        self.show_structure(what)
                     return
                 
                 if raw.lower().startswith("send interest"):
@@ -508,26 +542,39 @@ if GUI_AVAILABLE:
                 except Exception:
                     self._set_counter("faces", 0)
             
-            # Update CS table
+            # Update table based on current mode
             try:
                 entries = []
-                if isinstance(cs, dict):
-                    for name, meta in cs.items():
-                        size = meta.get("size", "")
-                        ctime = meta.get("cached_time", "")
-                        entries.append((name, size, ctime))
-                elif isinstance(cs, list):
-                    for item in cs:
-                        name = item.get("name", "")
-                        size = item.get("size", "")
-                        ctime = item.get("cached_time", "")
-                        entries.append((name, size, ctime))
-                
+                if self.current_table == "cs":
+                    if isinstance(cs, dict):
+                        for name, meta in cs.items():
+                            # size = meta.get("size", "")
+                            ctime = meta.get("timestamp", "")
+                            entries.append((name, time.strftime('%H:%M:%S', time.localtime(ctime))))
+                    elif isinstance(cs, list):
+                        for item in cs:
+                            name = item.get("name", "")
+                            # size = item.get("size", "")
+                            ctime = item.get("timestamp", "")
+                            entries.append((name, time.strftime('%H:%M:%S', time.localtime(ctime))))
+                elif self.current_table == "pit":
+                    if isinstance(pit, dict):
+                        for name, entry in pit.items():
+                            face = entry.get("interface", "")
+                            time_val = entry.get("time", "")
+                            entries.append((name, face, time.strftime('%H:%M:%S', time.localtime(time_val))))
+
                 self.table.setRowCount(len(entries))
-                for r, (name, size, ctime) in enumerate(entries):
-                    self.table.setItem(r, 0, QTableWidgetItem(str(name)))
-                    self.table.setItem(r, 1, QTableWidgetItem(str(size)))
-                    self.table.setItem(r, 2, QTableWidgetItem(str(ctime)))
+
+                if self.current_table == "cs":
+                    for r, (col1, col2) in enumerate(entries):
+                        self.table.setItem(r, 0, QTableWidgetItem(str(col1)))
+                        self.table.setItem(r, 1, QTableWidgetItem(str(col2)))
+                else:
+                    for r, (col1, col2, col3) in enumerate(entries):
+                        self.table.setItem(r, 0, QTableWidgetItem(str(col1)))
+                        self.table.setItem(r, 1, QTableWidgetItem(str(col2)))
+                        self.table.setItem(r, 2, QTableWidgetItem(str(col3)))
             except Exception:
                 pass
             
