@@ -212,7 +212,6 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
         print("\nShutting down node...")
 
 
-
 def pit_cleanup_worker(gui_callback=None):
     """Background thread to periodically clean up expired PIT entries."""
     CLEANUP_INTERVAL = 5  # seconds

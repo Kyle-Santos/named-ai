@@ -179,6 +179,15 @@ FACES = []  # List of faces
 FUNCTIONS_TABLE = {}   # Functions Table
 FRAG_BUFFER = {}
 
+# metrics
+METRICS = {
+    "interests_received": 0,
+    "data_packets_received": 0,
+    "data_packets_sent": 0,
+    "failed_packets": 0,
+    "total_data_bytes_received": 0,
+}
+
 def store_interest(name, face, addr, funcs=None, waiting_for=None):
     """Store an Interest in the PIT."""
     PIT_MAPPING[face] = addr
@@ -297,7 +306,6 @@ def get_PIT_entry(name):
 
 
 
-
 #####################
 # Processing Module #
 #####################
@@ -389,6 +397,8 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
     frag_num = packet.get("frag_num")
     frag_total = packet.get("frag_total")
 
+    # METRICS["total_data_bytes_received"] += len(raw_packet)
+
     # Find the relevant PIT entry
     pit_entry, original_name, waiting_for_name = find_pit_entry(name)
         
@@ -450,6 +460,9 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             # cleanup buffer
             del FRAG_BUFFER[original_name] 
 
+        # Response Time
+        # PDR
+        
         PIT.pop(original_name)
         log("INFO", f"Removed PIT entry for '{original_name}' after processing.")
 
