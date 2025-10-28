@@ -14,7 +14,7 @@ send interest /dlsu/grayscale(/dlsu/goks/cam/capture8.jpg)
 
 send interest /dlsu/grayscale(/dlsu/goks/detect(/dlsu/goks/cam/capture1.jpg))
 
-send interest /dlsu/resize(grayscale(/dlsu/goks/detect(/dlsu/goks/cam/capture1.jpg)))
+send interest /dlsu/goks/resize(detect(/dlsu/goks/cam/capture1.jpg))
 
 
 ## ML Pipeline

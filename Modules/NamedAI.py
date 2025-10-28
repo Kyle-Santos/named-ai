@@ -163,7 +163,7 @@ def parse_packet(packet_bytes):
 ##################
 NODE_NAME = None
 STORAGE_PATH = ""
-INTEREST_LIFETIME = 30  # seconds
+INTEREST_LIFETIME = 10  # seconds
 
 INTERFACES = {}  # port -> face, sock, port 
 
@@ -462,7 +462,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
 
         # Response Time
         # PDR
-        
+
         PIT.pop(original_name)
         log("INFO", f"Removed PIT entry for '{original_name}' after processing.")
 
