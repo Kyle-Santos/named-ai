@@ -7,38 +7,87 @@
                 { "face": "face0", "port": 9001 }
             ],
             "FIB": {
-                "/dlsu": { "face": "face0", "port": 9008 },
-                "/dlsu/goks": { "face": "face0", "port": 9010 }
-            }
+                "/dlsu": { "face": "face0", "port": 9009 }
+            },
+            "storage": "client_node/storage/"
         },
         
         {
             "name": "/dlsu",
             "interfaces": [
-                { "face": "face0", "port": 9008 },
-                { "face": "face1", "port": 9009 }
+                { "face": "face0", "port": 9006 },
+                { "face": "face1", "port": 9007 },
+                { "face": "face2", "port": 9008 },
+                { "face": "face3", "port": 9009 }
             ],
             "FIB": {
-                "/dlsu/goks": { "face": "face1", "port": 9010 }
+                "/dlsu/goks": { "face": "face1", "port": 9016 },
+                "/dlsu/andrew": { "face": "face2", "port": 9021 },
+                "/dlsu/velasco": { "face": "face3", "port": 9026 }
+            },
+            "storage": "nfn_nodes/dlsu/",
+            "functions": ["recognize"],
+            "node_functions_mapping": {
+                "/dlsu/goks": ["detect", "resize"],
+                "/dlsu/andrew": ["grayscale", "resize"],
+                "/dlsu/velasco": ["embedding", "normalize"]
             }
         },
 
         {
             "name": "/dlsu/goks",
             "interfaces": [
-                { "face": "face0", "port": 9010 },
-                { "face": "face1", "port": 9011 }
+                { "face": "face0", "port": 9016 },
+                { "face": "face1", "port": 9017 },
+                { "face": "face2", "port": 9018 },
+                { "face": "face3", "port": 9019 }
             ],
             "FIB": {
-                "/dlsu": { "face": "face0", "port": 9009 },
-                "/dlsu/goks/cam": { "face": "face1", "port": 9012 }
-            }
+                "/dlsu": { "face": "face0", "port": 9006 },
+                "/dlsu/andrew": { "face": "face1", "port": 9022 },
+                "/dlsu/velasco": { "face": "face2", "port": 9027 },
+                "/dlsu/goks/cam": { "face": "face3", "port": 9031 }
+            },
+            "storage": "nfn_nodes/goks/",
+            "functions": ["detect", "resize"]
+        },
+
+        {
+            "name": "/dlsu/andrew",
+            "interfaces": [
+                { "face": "face0", "port": 9021 },
+                { "face": "face1", "port": 9022 },
+                { "face": "face2", "port": 9023 }
+            ],
+            "FIB": {
+                "/dlsu": { "face": "face0", "port": 9007 },
+                "/dlsu/goks": { "face": "face1", "port": 9017 },
+                "/dlsu/velasco": { "face": "face2", "port": 9028 }
+            },
+            "storage": "nfn_nodes/andrew/",
+            "functions": ["grayscale", "resize"]
+        },
+
+        {
+            "name": "/dlsu/velasco",
+            "interfaces": [
+                { "face": "face0", "port": 9026 },
+                { "face": "face1", "port": 9027 },
+                { "face": "face2", "port": 9028 }
+            ],
+            "FIB": {
+                "/dlsu": { "face": "face0", "port": 9008 },
+                "/dlsu/goks": { "face": "face1", "port": 9018 },
+                "/dlsu/andrew": { "face": "face2", "port": 9023 }
+            },
+            "storage": "nfn_nodes/velasco/",
+            "functions": ["embedding", "normalize"]
         },
 
         {
             "name": "/dlsu/goks/cam",
             "interfaces": [
-                { "face": "face0", "port": 9012 }
+                { "face": "face0", "port": 9031 }
             ],
             "storage": "goks_cam_node/captures/"
         }

@@ -1,7 +1,15 @@
 Modules/goks_cam_node/kagglehub
-data-preprocessing/Face_Dataset
 Modules/client_node/*.jpg
+Modules/client_node/storage/*
+Modules/nfn_nodes/goks/*
+Modules/nfn_nodes/dlsu/*
+Modules/nfn_nodes/andrew/*
+Modules/nfn_nodes/velasco/*
+data-preprocessing/Face_Dataset
 *.pyc
+
+ML-models/model1_insightface/insightface
+ML-models/model1_insightface/onnxruntime
 data-preprocessing/facebank/*
 data-preprocessing/test_images/*
 Modules/*.jpg
