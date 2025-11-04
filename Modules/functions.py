@@ -168,3 +168,27 @@ def normalize(image_bytes: bytes) -> bytes:
     except Exception as e:
         print(f"[ERROR] Normalization failed: {e}")
         return image_bytes
+    
+
+def recognize(name: str, model, PIT, functions_mapping) -> str:
+    # best_choice = default node 
+    # interest_name = ""
+
+    if model == "insightface":
+        functions = [] 
+    elif model == "openface":
+        functions = ["detect", "resize"]
+    elif model == "mobilefacenet":
+        functions = ["detect", "grayscale", "resize", "normalize"] 
+
+        # for function in functions: 
+        #  for name, funcs in functions_mapping.items():
+            # if grayscale ni goks in PIT[name]
+            #  check another node
+            #  continue
+            # else bigay mo sakanya
+            #  best_choice = that node
+ 
+    # for loop to create the interest name
+
+    # return interest_name

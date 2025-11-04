@@ -163,7 +163,7 @@ def parse_packet(packet_bytes):
 ##################
 NODE_NAME = None
 STORAGE_PATH = ""
-INTEREST_LIFETIME = 10  # seconds
+INTEREST_LIFETIME = 20  # seconds
 
 INTERFACES = {}  # port -> face, sock, port 
 
@@ -351,6 +351,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
 
             # Forward Interest for base content (not recursive call)
             route = lookup_fib(base_name)
+            log("INFO", f"Forwarding Interest for base content '{base_name}' via route: {route}")
             if route:
                 forward_face, dest_port = route
                 source_port = INTERFACES[forward_face]["port"]
@@ -386,9 +387,24 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                 SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [interest_packet]))
                 return
     else:
-        store_interest(name, interface, addr)
-        # Forwarding could go here (not implemented yet)
+        # Forwarding could go here 
+        # Lets say name the node receiving is /dlsu/velasco and interest received is /dlsu/andrew/detect()
+        # The node /dlsu/velasco would need to forward the interest to /dlsu/andrew
 
+        # Find the next hop for the interest
+        route = lookup_fib(name)
+        if route:
+            forward_face, dest_port = route
+            dest_addr = ("127.0.0.1", dest_port)
+
+            log("INFO", f"Forwarding Interest for '{name}' to {forward_face}")
+
+            SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [build_interest_packet(name)]))
+            store_interest(name, interface, addr)
+        else:
+            # drop the packet since no route found
+            log("WARN", f"No route found for Interest '{name}', dropping")
+        return  
 
 def process_data(packet, raw_packet, sock, SEND_QUEUE):
     """Process Data Packet"""
