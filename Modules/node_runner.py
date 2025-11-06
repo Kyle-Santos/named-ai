@@ -378,11 +378,11 @@ if GUI_AVAILABLE:
             bottom = QHBoxLayout()
             bottom.setSpacing(8)
 
-            for label in ["show pit", "show cs", "clear logs", "stats"]:
+            for label in ["show pit", "show cs", "clear logs"]:
                 b = QPushButton(label)
                 b.clicked.connect(lambda checked=False, t=label: self.quick_command(t))
                 bottom.addWidget(b)
-            
+
             bottom.addStretch(1)
             
             self.cmd = QLineEdit()
