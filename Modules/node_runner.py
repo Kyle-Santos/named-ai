@@ -39,6 +39,7 @@ def load_node_config(config_path: str, node_name: str):
     NN.FIB = node_config.get("FIB", {})
     NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
     NN.initialize_content_store(node_config.get("storage", ""))
+    NN.NODE_FUNCTIONS_MAPPING = node_config.get("node_functions_mapping", {})
 
     for func_name in node_config.get("functions", []):
         if func_name == "detect":
@@ -63,7 +64,7 @@ def processor_thread(gui_callback=None):
     while True:
         try:
             # Get packet from queue (with timeout to allow periodic cleanup)
-            packet_info = PROCESSOR_QUEUE.get()
+            packet_info = PROCESSOR_QUEUE.get(timeout=1.0)
 
             raw_packet = packet_info["raw_packet"]
             sock = packet_info["sock"]
@@ -98,14 +99,19 @@ def processor_thread(gui_callback=None):
                     gui_callback("ERROR", msg)       
         except queue.Empty:
             # Queue empty - do cleanup tasks
-            msg = f"[OMG] Critical error: {e}"
-            print(msg)
             continue      
+        except KeyError as e:
+            msg = f"[Processor] PIT entry vanished during processing: {e}"
+            print(msg)
+            if gui_callback:
+                gui_callback("ERROR", msg)
         except Exception as e:
             msg = f"[Processor] Critical error: {e}"
             print(msg)
             if gui_callback:
                 gui_callback("ERROR", msg)
+            import traceback
+            traceback.print_exc()  # Print full stack trace
             time.sleep(0.1)
 
 

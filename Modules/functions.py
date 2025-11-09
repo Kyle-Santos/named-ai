@@ -17,6 +17,8 @@ def get_function(func_name: str):
         "resize": resize,
         "detect": detect,
         "grayscale": grayscale,
+        "orchestrate": orchestrate,
+        "normalize": normalize,
     }
     return functions_map.get(func_name, None)
 
@@ -170,25 +172,89 @@ def normalize(image_bytes: bytes) -> bytes:
         return image_bytes
     
 
-def recognize(name: str, model, PIT, functions_mapping) -> str:
-    # best_choice = default node 
-    # interest_name = ""
+def orchestrate(name: str, model, PIT, functions_mapping) -> str:
+    """Build an NFN Interest string for the requested recognition pipeline."""
+    model = (model or "").lower()
 
-    if model == "insightface":
-        functions = [] 
-    elif model == "openface":
-        functions = ["detect", "resize"]
-    elif model == "mobilefacenet":
-        functions = ["detect", "grayscale", "resize", "normalize"] 
+    model_pipelines = {
+        "insightface": ["detect", "resize", "normalize"],
+        "openface": ["detect", "resize"],
+        "mobilefacenet": ["detect", "grayscale", "resize", "normalize"],
+    }
 
-        # for function in functions: 
-        #  for name, funcs in functions_mapping.items():
-            # if grayscale ni goks in PIT[name]
-            #  check another node
-            #  continue
-            # else bigay mo sakanya
-            #  best_choice = that node
- 
-    # for loop to create the interest name
+    # order of nearest to camera
+    inorder_priority_nodes = ["/dlsu/goks", "/dlsu/andrew", "/dlsu/velasco"]
 
-    # return interest_name
+    if model not in model_pipelines:
+        raise ValueError(f"Unsupported model '{model}'")
+
+    required_functions = model_pipelines[model]
+
+    function_to_nodes = {}
+    for node_name, funcs in functions_mapping.items():
+        for func in funcs:
+            function_to_nodes.setdefault(func, []).append(node_name)
+
+    assignments = []
+    for func in required_functions:
+        candidates = function_to_nodes.get(func, [])
+        if not candidates:
+            raise ValueError(f"No available node provides '{func}'")
+        chosen_node = _select_node_for_function(candidates, func, PIT or {})
+        assignments.append((func, chosen_node))
+
+    # Group functions by node
+    node_to_funcs = {}
+    for func, node in assignments:
+        node_to_funcs.setdefault(node, []).append(func)
+
+    # Build expression following priority order (innermost to outermost)
+    interest_expr = name
+    for node in inorder_priority_nodes:
+        if node in node_to_funcs:
+            interest_expr = _build_segment_expression(node, node_to_funcs[node], interest_expr)
+
+    return interest_expr
+
+
+def _select_node_for_function(candidates, func, PIT):
+    for node in candidates:
+        if not _is_node_busy(node, func, PIT):
+            return node
+    return candidates[0]
+
+
+def _is_node_busy(node, func, PIT):
+    indicator = f"{node}/{func}"
+    for interest_name, entry in PIT.items():
+        if indicator in interest_name:
+            return True
+        funcs = entry.get("funcs") if isinstance(entry, dict) else None
+        if funcs and func in funcs and interest_name.startswith(node):
+            return True
+    return False
+
+
+def _build_segment_expression(node, funcs, inner_expr):
+    if not node:
+        raise ValueError("Node assignment missing for function segment")
+    if not funcs:
+        return inner_expr
+
+    segment_expr = inner_expr
+    for func in funcs:
+        segment_expr = f"{func}({segment_expr})"
+
+    return f"{node}/{segment_expr}"
+
+
+
+
+#  testing
+# node_functions_mapping =  {
+#         "/dlsu/goks": ["detect", "resize"],
+#         "/dlsu/andrew": ["grayscale", "resize"],
+#         "/dlsu/velasco": ["embedding", "normalize"]
+#     }
+# interest_name = orchestrate("/dlsu/goks/cam/capture1.jpg", "openface", {}, node_functions_mapping)
+# print("Generated Interest Name:", interest_name)
