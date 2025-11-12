@@ -188,6 +188,12 @@ METRICS = {
     "total_data_bytes_received": 0,
 }
 
+def update_metrics(metric_name, value = 1):
+    if metric_name not in METRICS:
+        log("WARN", f"Unknown '{metric_name}'")
+        return
+    METRICS[metric_name] += value
+
 def store_interest(name, face, addr, funcs=None, waiting_for=None):
     """Store an Interest in the PIT."""
     PIT_MAPPING[face] = addr
@@ -313,7 +319,7 @@ def get_PIT_entry(name):
 def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     """Process Interest: check CS or forward."""
     name = packet["name"]
-
+    update_metrics("interests_received")
     # First check Content Store
     cached_data = lookup_content(name)
     if cached_data:
@@ -323,6 +329,10 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
 
         SEND_QUEUE.put((sock, addr, response))
         log("INFO", f"Served '{name}' from CS to {addr}")
+
+        update_metrics("data_packets_sent")
+        update_metrics("total_data_bytes_received", len(bytes))
+
         return 
 
     # If this Interest is meant for this node
@@ -347,6 +357,9 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                 for resp in response:
                     parsed, _ = parse_packet(resp)
                     process_data(parsed, resp, sock, SEND_QUEUE)
+                
+                update_metrics("data_packets_sent")
+                update_metrics("total_data_bytes_received", len(bytes))
                 return
 
             # Forward Interest for base content (not recursive call)
@@ -356,6 +369,9 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                 source_port = INTERFACES[forward_face]["port"]
                 source_addr = ("127.0.0.1", source_port)
                 process_interest({ "name" : base_name }, source_addr, INTERFACES[forward_face]["sock"], SEND_QUEUE, None)
+            else:
+                #no route/cannot find route
+                update_metrics("failed_packets")
             return
 
 
@@ -381,10 +397,16 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                 store_interest(name, interface, addr)
                 log("INFO", f"PIT: {PIT}")
 
+                # interest forwarded
+                update_metrics("data_packets_sent")
+
                 # send
                 log("INFO", f"Sending Interest for '{name}'")
                 SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [interest_packet]))
                 return
+            else:
+                # fib no route
+                update_metrics("failed_packets")
     else:
         store_interest(name, interface, addr)
         # Forwarding could go here (not implemented yet)
@@ -397,6 +419,9 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
     frag_num = packet.get("frag_num")
     frag_total = packet.get("frag_total")
 
+    update_metrics("data_packets_received")
+    update_metrics("total_data_bytes_received", len(raw_packet))
+
     # METRICS["total_data_bytes_received"] += len(raw_packet)
 
     # Find the relevant PIT entry
@@ -404,6 +429,9 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
         
     if pit_entry is None:
         log("WARN", f"No PIT entry for {name}, dropping")
+
+        update_metrics("failed_packets")
+        
         return
     
     # Track if we should delete PIT entry at the end
@@ -431,6 +459,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                 # Forward the fragment
                 SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
                 log("INFO", f"Forwarding fragment {frag_num}/{frag_total} for {name} to {PIT_MAPPING[face]}")
+                update_metrics("data_packets_sent")
 
                 # Cache if all fragments received
                 if len(FRAG_BUFFER[name]["frags"]) == frag_total:
@@ -443,6 +472,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             else:
                 SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
                 log("INFO", f"Forwarding packet for {original_name} to {PIT_MAPPING[face]}")
+                update_metrics("data_packets_sent")
                 cleanup_flags["delete_pit"] = True
                 processed_data = data
 
