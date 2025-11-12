@@ -163,7 +163,7 @@ def parse_packet(packet_bytes):
 ##################
 NODE_NAME = None
 STORAGE_PATH = ""
-INTEREST_LIFETIME = 10  # seconds
+INTEREST_LIFETIME = 20  # seconds
 
 INTERFACES = {}  # port -> face, sock, port 
 
@@ -176,7 +176,10 @@ CS_SIZE = 100  # max number of entries in CS
 
 FIB = {}   # Forwarding Information Base
 FACES = []  # List of faces
+
 FUNCTIONS_TABLE = {}   # Functions Table
+NODE_FUNCTIONS_MAPPING = {}
+
 FRAG_BUFFER = {}
 
 # metrics
@@ -345,8 +348,16 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
             # the NFN is for this node
             base_name, funcs = parse_nfn_expression(requested_name)
 
-            # Store NFN interest in PIT
-            store_interest(name, interface, addr, funcs, base_name)
+            if "recognize" in funcs:
+                log("INFO", f"Received NFN Interest for recognition pipeline: '{name}'")
+                func = FUNCTIONS_TABLE["orchestrate"]
+                interest_expr = func(base_name, "openface", PIT, NODE_FUNCTIONS_MAPPING)
+                log("INFO", f"Orchestrated Interest Expression: '{interest_expr}'")
+                store_interest(name, interface, addr, funcs, interest_expr)
+                base_name = interest_expr
+            else:
+                # Store NFN interest in PIT
+                store_interest(name, interface, addr, funcs, base_name)
 
             cached_data = lookup_content(base_name)
             if cached_data:
@@ -364,6 +375,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
 
             # Forward Interest for base content (not recursive call)
             route = lookup_fib(base_name)
+            log("INFO", f"Forwarding Interest for base content '{base_name}' via route: {route}")
             if route:
                 forward_face, dest_port = route
                 source_port = INTERFACES[forward_face]["port"]
@@ -408,9 +420,24 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                 # fib no route
                 update_metrics("failed_packets")
     else:
-        store_interest(name, interface, addr)
-        # Forwarding could go here (not implemented yet)
+        # Forwarding could go here 
+        # Lets say name the node receiving is /dlsu/velasco and interest received is /dlsu/andrew/detect()
+        # The node /dlsu/velasco would need to forward the interest to /dlsu/andrew
 
+        # Find the next hop for the interest
+        route = lookup_fib(name)
+        if route:
+            forward_face, dest_port = route
+            dest_addr = ("127.0.0.1", dest_port)
+
+            log("INFO", f"Forwarding Interest for '{name}' to {forward_face}")
+
+            SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [build_interest_packet(name)]))
+            store_interest(name, interface, addr)
+        else:
+            # drop the packet since no route found
+            log("WARN", f"No route found for Interest '{name}', dropping")
+        return  
 
 def process_data(packet, raw_packet, sock, SEND_QUEUE):
     """Process Data Packet"""
@@ -424,91 +451,87 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
 
     # METRICS["total_data_bytes_received"] += len(raw_packet)
 
-    # Find the relevant PIT entry
-    pit_entry, original_name, waiting_for_name = find_pit_entry(name)
+    with PIT_LOCK:
+        # Find the relevant PIT entry
+        pit_entry, original_name, waiting_for_name = find_pit_entry(name)
+            
+        if pit_entry is None:
+            log("WARN", f"No PIT entry for {name}, dropping")
+            return
         
-    if pit_entry is None:
-        log("WARN", f"No PIT entry for {name}, dropping")
-
-        update_metrics("failed_packets")
+        # Track if we should delete PIT entry at the end
+        cleanup_flags = {
+            "delete_pit": False,
+            "delete_waiting_for": False
+        }
         
-        return
-    
-    # Track if we should delete PIT entry at the end
-    cleanup_flags = {
-        "delete_pit": False,
-        "delete_waiting_for": False
-    }
-    
-    for face in pit_entry["interface"]:
-        if should_process_locally(face, waiting_for_name):
-            processed_data = handle_local_processing(
-                original_name, waiting_for_name, data,
-                frag_num, frag_total, pit_entry, 
-                SEND_QUEUE, cleanup_flags
-            )     
-        else: # Handle Packet Forwarding case
-            # Fragmented data
-            if frag_total:
-                if name not in FRAG_BUFFER:
-                    FRAG_BUFFER[name] = {"frags": {}, "expected": frag_total}
+        for face in pit_entry["interface"]:
+            if should_process_locally(face, waiting_for_name):
+                processed_data = handle_local_processing(
+                    original_name, waiting_for_name, data,
+                    frag_num, frag_total, pit_entry, 
+                    SEND_QUEUE, cleanup_flags
+                )     
+            else: # Handle Packet Forwarding case
+                # Fragmented data
+                if frag_total:
+                    if name not in FRAG_BUFFER:
+                        FRAG_BUFFER[name] = {"frags": {}, "expected": frag_total}
 
-                if frag_num not in FRAG_BUFFER[name]["frags"]:
-                    FRAG_BUFFER[name]["frags"][frag_num] = data
+                    if frag_num not in FRAG_BUFFER[name]["frags"]:
+                        FRAG_BUFFER[name]["frags"][frag_num] = data
 
-                # Forward the fragment
-                SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
-                log("INFO", f"Forwarding fragment {frag_num}/{frag_total} for {name} to {PIT_MAPPING[face]}")
-                update_metrics("data_packets_sent")
+                    # Forward the fragment
+                    SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
+                    log("INFO", f"Forwarding fragment {frag_num}/{frag_total} for {name} to {PIT_MAPPING[face]}")
 
-                # Cache if all fragments received
-                if len(FRAG_BUFFER[name]["frags"]) == frag_total:
-                    reassembled_data = reassemble_fragments(name, frag_total)
+                    # Cache if all fragments received
+                    if len(FRAG_BUFFER[name]["frags"]) == frag_total:
+                        reassembled_data = reassemble_fragments(name, frag_total)
+                        cleanup_flags["delete_pit"] = True
+                        processed_data = reassembled_data  # Return to be saved once
+                    
+                    processed_data = None
+                # Non-fragmented data
+                else:
+                    SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
+                    log("INFO", f"Forwarding packet for {original_name} to {PIT_MAPPING[face]}")
                     cleanup_flags["delete_pit"] = True
-                    processed_data = reassembled_data  # Return to be saved once
-                
-                processed_data = None
-            # Non-fragmented data
-            else:
-                SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
-                log("INFO", f"Forwarding packet for {original_name} to {PIT_MAPPING[face]}")
-                update_metrics("data_packets_sent")
-                cleanup_flags["delete_pit"] = True
-                processed_data = data
+                    processed_data = data
 
-    # Save data after all processing
-    if processed_data is not None and cleanup_flags["delete_pit"]:
-        save_data_to_file(original_name, processed_data)
-        log("INFO", f"Saved processed data for '{original_name}'")
+        # Save data after all processing
+        if processed_data is not None and cleanup_flags["delete_pit"]:
+            save_data_to_file(original_name, processed_data)
+            log("INFO", f"Saved processed data for '{original_name}'")
 
-    # Cleanup after all processing
-    if cleanup_flags["delete_waiting_for"] and waiting_for_name in PIT:
-        PIT.pop(waiting_for_name)
+        # Cleanup after all processing
+        if cleanup_flags["delete_waiting_for"] and waiting_for_name in PIT:
+            PIT.pop(waiting_for_name)
 
-    if cleanup_flags["delete_pit"] and original_name in PIT:
-        if original_name in FRAG_BUFFER:
-            # cleanup buffer
-            del FRAG_BUFFER[original_name] 
+        if cleanup_flags["delete_pit"] and original_name in PIT:
+            if original_name in FRAG_BUFFER:
+                # cleanup buffer
+                del FRAG_BUFFER[original_name] 
 
-        # Response Time
-        # PDR
+            # Response Time
+            # PDR
 
-        PIT.pop(original_name)
-        log("INFO", f"Removed PIT entry for '{original_name}' after processing.")
+            PIT.pop(original_name)
+            log("INFO", f"Removed PIT entry for '{original_name}' after processing.")
 
-    return cleanup_flags["delete_pit"]
+        return cleanup_flags["delete_pit"]
 
 
 def find_pit_entry(name):
     """Find PIT entry for the given name or waiting_for relationship"""
-    pit_entry = None
+    pit_entry = PIT[name]
     waiting_for_name = None
     original_name = name
 
     # Direct match
-    if name in PIT:
-        pit_entry = PIT[name]
-        return pit_entry, original_name, waiting_for_name
+    # if name in PIT:
+    #     pit_entry = PIT[name]
+    #     return pit_entry, original_name, waiting_for_name
 
     # Check if any entry is waiting for this data (NFN case)
     for entry_name, entry in list(PIT.items()):

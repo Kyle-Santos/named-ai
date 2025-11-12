@@ -26,7 +26,12 @@
                 "/dlsu/velasco": { "face": "face3", "port": 9026 }
             },
             "storage": "nfn_nodes/dlsu/",
-            "functions": ["recognize"]
+            "functions": ["orchestrate", "recognize"],
+            "node_functions_mapping": {
+                "/dlsu/goks": ["detect", "resize"],
+                "/dlsu/andrew": ["grayscale", "resize"],
+                "/dlsu/velasco": ["embedding", "normalize"]
+            }
         },
 
         {

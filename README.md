@@ -6,6 +6,10 @@ python .\node_runner.py --node /dlsu/goks
 
 python .\node_runner.py --node /dlsu
 
+python .\node_runner.py --node /dlsu/andrew
+
+python .\node_runner.py --node /dlsu/velasco
+
 python .\node_runner.py --client client
 
 send interest /dlsu/goks/cam/capture8.jpg
@@ -14,7 +18,13 @@ send interest /dlsu/grayscale(/dlsu/goks/cam/capture8.jpg)
 
 send interest /dlsu/grayscale(/dlsu/goks/detect(/dlsu/goks/cam/capture1.jpg))
 
-send interest /dlsu/goks/resize(detect(/dlsu/goks/cam/capture1.jpg))
+send interest /dlsu/goks/resize(detect(/dlsu/goks/cam/capture8.jpg))
+
+send interest /dlsu/andrew/grayscale(/dlsu/goks/resize(detect(/dlsu/goks/cam/capture1.jpg)))
+
+send interest /dlsu/velasco/normalize(/dlsu/andrew/grayscale(/dlsu/goks/resize(detect(/dlsu/goks/cam/capture1.jpg))))
+
+send interest /dlsu/recognize(/dlsu/goks/cam/capture1.jpg)
 
 
 ## ML Pipeline
