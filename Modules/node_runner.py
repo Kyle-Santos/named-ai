@@ -380,19 +380,11 @@ if GUI_AVAILABLE:
             # Counters
             counters = QHBoxLayout()
             counters.setSpacing(10)
-<<<<<<< Updated upstream
-            self.pit_box = self._make_counter("PIT", self.ACCENT)
-            self.fib_box = self._make_counter("FIB", self.ACCENT2)
-            self.cs_box = self._make_counter("CS", self.ACCENT3)
-            self.face_box = self._make_counter("FACES", self.SUCCESS)
-            
-=======
             self.pit_box = self._make_counter("pit", "PIT", self.ACCENT)
             self.fib_box = self._make_counter("fib", "FIB", self.ACCENT2)
             self.cs_box = self._make_counter("cs", "CS", self.ACCENT3)
             self.face_box = self._make_counter("faces", "FACES", self.SUCCESS)
 
->>>>>>> Stashed changes
             for w in (self.pit_box, self.fib_box, self.cs_box, self.face_box):
                 counters.addWidget(w)
             rightlay.addLayout(counters)
