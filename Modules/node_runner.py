@@ -381,11 +381,9 @@ if GUI_AVAILABLE:
             counters = QHBoxLayout()
             counters.setSpacing(10)
             self.pit_box = self._make_counter("pit", "PIT", self.ACCENT)
-            self.fib_box = self._make_counter("fib", "FIB", self.ACCENT2)
             self.cs_box = self._make_counter("cs", "CS", self.ACCENT3)
-            self.face_box = self._make_counter("faces", "FACES", self.SUCCESS)
 
-            for w in (self.pit_box, self.fib_box, self.cs_box, self.face_box):
+            for w in (self.pit_box, self.cs_box):
                 counters.addWidget(w)
             rightlay.addLayout(counters)
 
@@ -396,16 +394,16 @@ if GUI_AVAILABLE:
 
             metrics_layout = QHBoxLayout()
             metrics_layout.setSpacing(10)
-            self.interests_received_box = self._make_counter("interests_received", "Interests Recvd", self.WARN)
-            self.data_packets_received_box = self._make_counter("data_packets_received", "Data Recvd", self.ERROR)
+            self.interests_received_box = self._make_counter("interests_received", "Interests Received", self.WARN)
+            self.data_packets_received_box = self._make_counter("data_packets_received", "Data Received", self.ERROR)
             self.data_packets_sent_box = self._make_counter("data_packets_sent", "Data Sent", self.SUCCESS)
-            self.failed_packets_box = self._make_counter("failed_packets", "Failed Pkts", self.INFO)
+            self.failed_packets_box = self._make_counter("failed_packets", "Failed Packets", self.INFO)
             self.total_data_bytes_received_box = self._make_counter("total_data_bytes_received", "Total Bytes", self.ACCENT)
 
             for w in (self.interests_received_box, self.data_packets_received_box, self.data_packets_sent_box, self.failed_packets_box, self.total_data_bytes_received_box):
                 metrics_layout.addWidget(w)
             rightlay.addLayout(metrics_layout)
-            
+
             # Data Structure Table (PIT by default)
             self.table = QTableWidget(0, 3)
             self.set_table_headers("pit")
