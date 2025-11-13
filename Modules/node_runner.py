@@ -322,15 +322,15 @@ if GUI_AVAILABLE:
             self.timer.timeout.connect(self.refresh_stats)
             self.timer.start(800)
 
-        def _get_default_style(self):
-            return """
-                QWidget { background-color: #0f172a; color: #c7d2fe; }
-                QTextEdit { background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px; }
-                QLineEdit { background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px; }
-                QPushButton { background-color: #3b82f6; border: none; border-radius: 6px; padding: 8px 16px; font-weight: 600; }
-                QPushButton:hover { background-color: #2563eb; }
-                QTableWidget { background-color: #1e293b; border: 1px solid #334155; }
-                QHeaderView::section { background-color: #334155; color: #c7d2fe; padding: 8px; border: none; }
+        def _get_default_style(self, bg_color):
+            return f"""
+                QWidget {{ background-color: {bg_color}; color: #c7d2fe; }}
+                QTextEdit {{ background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px; }}
+                QLineEdit {{ background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px; }}
+                QPushButton {{ background-color: #3b82f6; border: none; border-radius: 6px; padding: 8px 16px; font-weight: 600; }}
+                QPushButton:hover {{ background-color: #2563eb; }}
+                QTableWidget {{ background-color: #1e293b; border: 1px solid #334155; }}
+                QHeaderView::section {{ background-color: #334155; color: #c7d2fe; padding: 8px; border: none; }}
             """
 
         def _setup_ui(self):
@@ -352,7 +352,7 @@ if GUI_AVAILABLE:
             leftlay.setSpacing(8)
             
             title_logs = QLabel("DEBUG LOGS")
-            title_logs.setStyleSheet(f"color:{SUCCESS}; font-weight:700; font-size:12pt;")
+            title_logs.setStyleSheet(f"color:{self.SUCCESS}; font-weight:700; font-size:12pt;")
             
             self.ns_label = QLabel(f"{self.node_name}")
             self.ns_label.setStyleSheet(
@@ -496,11 +496,11 @@ if GUI_AVAILABLE:
             bottom = QHBoxLayout()
             bottom.setSpacing(8)
 
-            for label in ["show pit", "show cs", "clear logs", "stats"]:
+            for label in ["show pit", "show cs", "clear logs"]:
                 b = QPushButton(label)
                 b.clicked.connect(lambda checked=False, t=label: self.quick_command(t))
                 bottom.addWidget(b)
-            
+
             bottom.addStretch(1)
             
             self.cmd = QLineEdit()
@@ -554,9 +554,9 @@ if GUI_AVAILABLE:
             self.table.setHorizontalHeaderLabels(headers)
 
         def append_log(self, level: str, line: str):
-            color = {"SUCCESS": SUCCESS, "INFO": INFO, "WARN": WARN, "ERROR": ERROR}.get(level, INFO)
+            color = {"SUCCESS": self.SUCCESS, "INFO": self.INFO, "WARN": self.WARN, "ERROR": self.ERROR}.get(level, self.INFO)
             ts = datetime.now().strftime("%I:%M:%S %p")
-            html = f'<span style="color:{INFO}">[{ts}]</span> <span style="color:{color}">[{level}]</span> {line}'
+            html = f'<span style="color:{self.INFO}">[{ts}]</span> <span style="color:{color}">[{level}]</span> {line}'
             self.logs.append(html)
             self.logs.moveCursor(QTextCursor.End)
 
@@ -644,11 +644,12 @@ if GUI_AVAILABLE:
             fib = getattr(NN, "FIB", {})
             cs = getattr(NN, "CS", {})
             faces = getattr(NN, "FACES", None)
-            
+            metrics = getattr(NN, "METRICS", {})
+
             self._set_counter("pit", self._safe_len(pit))
             self._set_counter("fib", self._safe_len(fib))
             self._set_counter("cs", self._safe_len(cs))
-            
+
             if isinstance(faces, (list, dict)):
                 self._set_counter("faces", self._safe_len(faces))
             else:
@@ -660,6 +661,10 @@ if GUI_AVAILABLE:
                     self._set_counter("faces", len(unique_faces) or 0)
                 except Exception:
                     self._set_counter("faces", 0)
+
+            # Update METRICS counters
+            for metric_name, value in metrics.items():
+                self._set_counter(metric_name, value)
             
             # Update table based on current mode
             try:
