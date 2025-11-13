@@ -380,14 +380,39 @@ if GUI_AVAILABLE:
             # Counters
             counters = QHBoxLayout()
             counters.setSpacing(10)
+<<<<<<< Updated upstream
             self.pit_box = self._make_counter("PIT", self.ACCENT)
             self.fib_box = self._make_counter("FIB", self.ACCENT2)
             self.cs_box = self._make_counter("CS", self.ACCENT3)
             self.face_box = self._make_counter("FACES", self.SUCCESS)
             
+=======
+            self.pit_box = self._make_counter("pit", "PIT", self.ACCENT)
+            self.fib_box = self._make_counter("fib", "FIB", self.ACCENT2)
+            self.cs_box = self._make_counter("cs", "CS", self.ACCENT3)
+            self.face_box = self._make_counter("faces", "FACES", self.SUCCESS)
+
+>>>>>>> Stashed changes
             for w in (self.pit_box, self.fib_box, self.cs_box, self.face_box):
                 counters.addWidget(w)
             rightlay.addLayout(counters)
+
+            # METRICS
+            metrics_title = QLabel("METRICS")
+            metrics_title.setStyleSheet(f"color:{self.WARN}; font-weight:700; font-size:12pt;")
+            rightlay.addWidget(metrics_title)
+
+            metrics_layout = QHBoxLayout()
+            metrics_layout.setSpacing(10)
+            self.interests_received_box = self._make_counter("interests_received", "Interests Recvd", self.WARN)
+            self.data_packets_received_box = self._make_counter("data_packets_received", "Data Recvd", self.ERROR)
+            self.data_packets_sent_box = self._make_counter("data_packets_sent", "Data Sent", self.SUCCESS)
+            self.failed_packets_box = self._make_counter("failed_packets", "Failed Pkts", self.INFO)
+            self.total_data_bytes_received_box = self._make_counter("total_data_bytes_received", "Total Bytes", self.ACCENT)
+
+            for w in (self.interests_received_box, self.data_packets_received_box, self.data_packets_sent_box, self.failed_packets_box, self.total_data_bytes_received_box):
+                metrics_layout.addWidget(w)
+            rightlay.addLayout(metrics_layout)
             
             # Data Structure Table (PIT by default)
             self.table = QTableWidget(0, 3)
@@ -423,19 +448,19 @@ if GUI_AVAILABLE:
             
             root.addLayout(bottom)
 
-        def _make_counter(self, label: str, color: str):
+        def _make_counter(self, metric_name: str, display_label: str, color: str):
             box = QFrame()
             box.setFrameShape(QFrame.StyledPanel)
             lay = QVBoxLayout(box)
             lay.setContentsMargins(10, 10, 10, 10)
-            
-            t = QLabel(label)
+
+            t = QLabel(display_label)
             t.setStyleSheet(f"color:{color}; font-size:11pt; font-weight:700;")
-            
+
             v = QLabel("0")
             v.setStyleSheet("font-size:20pt; font-weight:800;")
-            v.setObjectName(f"val_{label.lower()}")
-            
+            v.setObjectName(f"val_{metric_name}")
+
             lay.addWidget(t)
             lay.addWidget(v)
             lay.addStretch(1)
@@ -549,11 +574,12 @@ if GUI_AVAILABLE:
             fib = getattr(NN, "FIB", {})
             cs = getattr(NN, "CS", {})
             faces = getattr(NN, "FACES", None)
-            
+            metrics = getattr(NN, "METRICS", {})
+
             self._set_counter("pit", self._safe_len(pit))
             self._set_counter("fib", self._safe_len(fib))
             self._set_counter("cs", self._safe_len(cs))
-            
+
             if isinstance(faces, (list, dict)):
                 self._set_counter("faces", self._safe_len(faces))
             else:
@@ -565,6 +591,10 @@ if GUI_AVAILABLE:
                     self._set_counter("faces", len(unique_faces) or 0)
                 except Exception:
                     self._set_counter("faces", 0)
+
+            # Update METRICS counters
+            for metric_name, value in metrics.items():
+                self._set_counter(metric_name, value)
             
             # Update table based on current mode
             try:
