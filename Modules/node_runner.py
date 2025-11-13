@@ -395,15 +395,15 @@ if GUI_AVAILABLE:
             title_ds.setStyleSheet(f"color:{self.ACCENT2}; font-weight:700; font-size:12pt;")
             ds_layout.addWidget(title_ds)
 
-            ds_counters = QHBoxLayout()
-            ds_counters.setSpacing(10)
+            ds_counters = QVBoxLayout()
+            ds_counters.setSpacing(5)
 
             # Only PIT and CS
             self.pit_box = self._make_counter("pit", "PIT", self.ACCENT)
             self.cs_box = self._make_counter("cs", "CS", self.ACCENT3)
 
-            for w in (self.pit_box, self.cs_box):
-                ds_counters.addWidget(w)
+            ds_counters.addWidget(self.pit_box)
+            ds_counters.addWidget(self.cs_box)
 
 
             ds_layout.addLayout(ds_counters)
@@ -419,57 +419,50 @@ if GUI_AVAILABLE:
             metrics_title.setStyleSheet(f"color:{self.WARN}; font-weight:700; font-size:12pt;")
             m_layout.addWidget(metrics_title)
 
-            # --------------------------
-            # METRICS ROW 1
-            # --------------------------
-            m_row1 = QHBoxLayout()
-            m_row1.setSpacing(10)
+            # Create horizontal layout for two vertical columns
+            metrics_hbox = QHBoxLayout()
+            metrics_hbox.setSpacing(10)
 
-            self.interests_received_box = self._make_counter(
-                "interests_received", "Interests Received", self.WARN
-            )
+            # Left vertical column
+            left_vbox = QVBoxLayout()
+            left_vbox.setSpacing(8)
+
             self.interests_sent_box = self._make_counter(
                 "interests_sent", "Interests Sent", self.ACCENT2
             )
             self.data_packets_sent_box = self._make_counter(
                 "data_packets_sent", "Data Sent", self.SUCCESS
             )
-
-            for w in (
-                self.interests_received_box,
-                self.interests_sent_box,
-                self.data_packets_received_box,
-                ):
-                m_row1.addWidget(w, 1)
-
-            m_layout.addLayout(m_row1)
-
-            # --------------------------
-            # METRICS ROW 2 (below)
-            # --------------------------
-            m_row2 = QHBoxLayout()
-            m_row2.setSpacing(10)
-
-            self.data_packets_received_box = self._make_counter(
-                "data_packets_received", "Data Received", self.ERROR
-            )
-
             self.failed_packets_box = self._make_counter(
                 "failed_packets", "Failed Packets", self.INFO
+            )
+
+            left_vbox.addWidget(self.interests_sent_box)
+            left_vbox.addWidget(self.data_packets_sent_box)
+            left_vbox.addWidget(self.failed_packets_box)
+
+            # Right vertical column
+            right_vbox = QVBoxLayout()
+            right_vbox.setSpacing(8)
+
+            self.interests_received_box = self._make_counter(
+                "interests_received", "Interests Received", self.WARN
+            )
+            self.data_packets_received_box = self._make_counter(
+                "data_packets_received", "Data Received", self.ERROR
             )
             self.total_data_bytes_received_box = self._make_counter(
                 "total_data_bytes_received", "Total Bytes", self.ACCENT
             )
 
-            for w in (
-                self.data_packets_sent_box,
-                self.failed_packets_box,
-                self.total_data_bytes_received_box,
-                ):
-                m_row2.addWidget(w)
+            right_vbox.addWidget(self.interests_received_box)
+            right_vbox.addWidget(self.data_packets_received_box)
+            right_vbox.addWidget(self.total_data_bytes_received_box)
 
+            metrics_hbox.addLayout(left_vbox)
+            metrics_hbox.addLayout(right_vbox)
 
-            m_layout.addLayout(m_row2)
+            m_layout.addLayout(metrics_hbox)
 
             stats_row.addWidget(metrics_frame, 1)
 
@@ -522,7 +515,7 @@ if GUI_AVAILABLE:
             box.setFrameShape(QFrame.StyledPanel)
 
             lay = QVBoxLayout(box)
-            lay.setContentsMargins(10, 10, 10, 10)
+            lay.setContentsMargins(5, 10, 5, 10)
 
             t = QLabel(display_label)
             t.setStyleSheet(f"color:{color}; font-size:11pt; font-weight:700;")
