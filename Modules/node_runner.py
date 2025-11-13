@@ -20,7 +20,7 @@ try:
     from PyQt5.QtGui import QFont, QTextCursor
     from PyQt5.QtWidgets import (
         QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLabel, QLineEdit,
-        QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QFrame
+        QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QFrame, QSizePolicy
     )
     GUI_AVAILABLE = True
 except ImportError:
@@ -305,8 +305,7 @@ if GUI_AVAILABLE:
                 bg_color = "#2b0071"
 
             self.setWindowTitle(f"NDN Node Monitor - {node_name}")
-            self.resize(550, 360)
-            
+
             self.setStyleSheet(self._get_default_style(bg_color))
             
             self._setup_ui()
@@ -337,7 +336,9 @@ if GUI_AVAILABLE:
             split.setSpacing(10)
             root.addLayout(split)
             
-            # Left Panel - Logs
+            # -----------------------------
+            # Left Panel – Logs
+            # -----------------------------
             self.left = QFrame()
             self.left.setFrameShape(QFrame.StyledPanel)
             leftlay = QVBoxLayout(self.left)
@@ -348,7 +349,10 @@ if GUI_AVAILABLE:
             title_logs.setStyleSheet(f"color:{self.SUCCESS}; font-weight:700; font-size:12pt;")
             
             self.ns_label = QLabel(f"{self.node_name}")
-            self.ns_label.setStyleSheet("background:#0b1020; border:1px solid #1f2a44; border-radius:6px; padding:4px 8px; color:#9ca3af;")
+            self.ns_label.setStyleSheet(
+                "background:#0b1020; border:1px solid #1f2a44; "
+                "border-radius:6px; padding:4px 8px; color:#9ca3af;"
+            )
             
             tt = QHBoxLayout()
             tt.addWidget(title_logs)
@@ -366,55 +370,129 @@ if GUI_AVAILABLE:
             
             split.addWidget(self.left, 1)
             
-            # Right Panel - Data Structures
+            # -----------------------------
+            # Right Panel – Stats & Table
+            # -----------------------------
             self.right = QFrame()
             self.right.setFrameShape(QFrame.StyledPanel)
             rightlay = QVBoxLayout(self.right)
             rightlay.setContentsMargins(12, 12, 12, 12)
             rightlay.setSpacing(8)
-            
+
+            # =============================
+            # TOP ROW: DATA STRUCTURES | METRICS
+            # =============================
+            stats_row = QHBoxLayout()
+            stats_row.setSpacing(12)
+
+            # ----- Data Structures group -----
+            ds_frame = QFrame()
+            ds_layout = QVBoxLayout(ds_frame)
+            ds_layout.setContentsMargins(10, 10, 10, 10)
+            ds_layout.setSpacing(8)
+
             title_ds = QLabel("DATA STRUCTURES")
             title_ds.setStyleSheet(f"color:{self.ACCENT2}; font-weight:700; font-size:12pt;")
-            rightlay.addWidget(title_ds)
+            ds_layout.addWidget(title_ds)
 
-            # Counters
-            counters = QHBoxLayout()
-            counters.setSpacing(10)
+            ds_counters = QHBoxLayout()
+            ds_counters.setSpacing(10)
+
+            # Only PIT and CS
             self.pit_box = self._make_counter("pit", "PIT", self.ACCENT)
             self.cs_box = self._make_counter("cs", "CS", self.ACCENT3)
 
             for w in (self.pit_box, self.cs_box):
-                counters.addWidget(w)
-            rightlay.addLayout(counters)
+                ds_counters.addWidget(w, 1)   # stretch = 1
 
-            # METRICS
+
+            ds_layout.addLayout(ds_counters)
+            stats_row.addWidget(ds_frame, 1)
+
+            # ----- Metrics group -----
+            metrics_frame = QFrame()
+            m_layout = QVBoxLayout(metrics_frame)
+            m_layout.setContentsMargins(10, 10, 10, 10)
+            m_layout.setSpacing(8)
+
             metrics_title = QLabel("METRICS")
             metrics_title.setStyleSheet(f"color:{self.WARN}; font-weight:700; font-size:12pt;")
-            rightlay.addWidget(metrics_title)
+            m_layout.addWidget(metrics_title)
 
-            metrics_layout = QHBoxLayout()
-            metrics_layout.setSpacing(10)
-            self.interests_received_box = self._make_counter("interests_received", "Interests Received", self.WARN)
-            self.data_packets_received_box = self._make_counter("data_packets_received", "Data Received", self.ERROR)
-            self.data_packets_sent_box = self._make_counter("data_packets_sent", "Data Sent", self.SUCCESS)
-            self.failed_packets_box = self._make_counter("failed_packets", "Failed Packets", self.INFO)
-            self.total_data_bytes_received_box = self._make_counter("total_data_bytes_received", "Total Bytes", self.ACCENT)
+            # --------------------------
+            # METRICS ROW 1
+            # --------------------------
+            m_row1 = QHBoxLayout()
+            m_row1.setSpacing(10)
 
-            for w in (self.interests_received_box, self.data_packets_received_box, self.data_packets_sent_box, self.failed_packets_box, self.total_data_bytes_received_box):
-                metrics_layout.addWidget(w)
-            rightlay.addLayout(metrics_layout)
+            self.interests_received_box = self._make_counter(
+                "interests_received", "Interests Received", self.WARN
+            )
+            self.interests_sent_box = self._make_counter(
+                "interests_sent", "Interests Sent", self.ACCENT2
+            )
+            self.data_packets_received_box = self._make_counter(
+                "data_packets_received", "Data Received", self.ERROR
+            )
 
-            # Data Structure Table (PIT by default)
+            for w in (
+                self.interests_received_box,
+                self.interests_sent_box,
+                self.data_packets_received_box,
+                ):
+                m_row1.addWidget(w, 1)
+
+            m_layout.addLayout(m_row1)
+
+            # --------------------------
+            # METRICS ROW 2 (below)
+            # --------------------------
+            m_row2 = QHBoxLayout()
+            m_row2.setSpacing(10)
+
+            self.data_packets_sent_box = self._make_counter(
+                "data_packets_sent", "Data Sent", self.SUCCESS
+            )
+            self.failed_packets_box = self._make_counter(
+                "failed_packets", "Failed Packets", self.INFO
+            )
+            self.total_data_bytes_received_box = self._make_counter(
+                "total_data_bytes_received", "Total Bytes", self.ACCENT
+            )
+
+            for w in (
+                self.data_packets_sent_box,
+                self.failed_packets_box,
+                self.total_data_bytes_received_box,
+                ):
+                m_row2.addWidget(w, 1)
+
+
+            m_layout.addLayout(m_row2)
+
+            stats_row.addWidget(metrics_frame, 1)
+
+            # Add the whole top row to the right panel
+            rightlay.addLayout(stats_row)
+
+            # =============================
+            # TABLE (PIT / CS)
+            # =============================
             self.table = QTableWidget(0, 3)
             self.set_table_headers("pit")
             self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
             self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
             self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
             rightlay.addWidget(self.table, 1)
+
+            rightlay.setStretch(0, 1)   # stats_row
+            rightlay.setStretch(1, 2)   # table (still gets more, but stats_row can grow)
             
             split.addWidget(self.right, 1)
             
+            # -----------------------------
             # Bottom Command Bar
+            # -----------------------------
             bottom = QHBoxLayout()
             bottom.setSpacing(8)
 
@@ -441,6 +519,11 @@ if GUI_AVAILABLE:
         def _make_counter(self, metric_name: str, display_label: str, color: str):
             box = QFrame()
             box.setFrameShape(QFrame.StyledPanel)
+
+            # Let the box expand in both directions inside layouts
+            from PyQt5.QtWidgets import QSizePolicy
+            box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
             lay = QVBoxLayout(box)
             lay.setContentsMargins(10, 10, 10, 10)
 
@@ -455,6 +538,7 @@ if GUI_AVAILABLE:
             lay.addWidget(v)
             lay.addStretch(1)
             return box
+
 
         def _set_counter(self, name: str, value: int):
             lab = self.findChild(QLabel, f"val_{name}")
