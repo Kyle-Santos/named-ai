@@ -39,6 +39,7 @@ def load_node_config(config_path: str, node_name: str):
     NN.FIB = node_config.get("FIB", {})
     NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
     NN.initialize_content_store(node_config.get("storage", ""))
+    print("asdasda")
     NN.NODE_FUNCTIONS_MAPPING = node_config.get("node_functions_mapping", {})
 
     for func_name in node_config.get("functions", []):
@@ -163,14 +164,16 @@ def sender(gui_callback=None):
 
 def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
     """Main node runner with separated receiver and processor threads."""
-
     node_config = load_node_config(config_path, node_name)
     interfaces = create_interfaces(node_config)
+    
 
     msg = f"{NN.NODE_NAME} running with faces: {list(interfaces.keys())}"
     print(f"\033[92m{msg}\033[0m")
     if gui_callback:
         gui_callback("SUCCESS", msg)
+
+    NN.GUI_CALLBACK = gui_callback
 
     threads = []
 

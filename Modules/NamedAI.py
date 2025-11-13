@@ -16,6 +16,7 @@ def log(level, message, path=""):
         level_upper = "INFO"  # default to INFO if invalid level
     entry = {"level": level_upper, "message": message, "path": path, "timestamp": timestamp}
     LOGS.append(entry)
+    GUI_CALLBACK(level_upper, message)
     print(f"\n[{timestamp}] [{level_upper}] {message}" + (f" {path}" if path else ""))
 
 
@@ -182,6 +183,8 @@ NODE_FUNCTIONS_MAPPING = {}
 
 FRAG_BUFFER = {}
 
+GUI_CALLBACK = None
+
 # metrics
 METRICS = {
     "interests_received": 0,
@@ -241,7 +244,7 @@ def initialize_content_store(storage_path):
     """Load existing content from storage into the Content Store (CS)."""
     global STORAGE_PATH
     STORAGE_PATH = storage_path
-
+    print(storage_path)
     if STORAGE_PATH != "" and not os.path.exists(STORAGE_PATH):
         os.makedirs(STORAGE_PATH)
 
