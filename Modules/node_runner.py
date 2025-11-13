@@ -403,7 +403,7 @@ if GUI_AVAILABLE:
             self.cs_box = self._make_counter("cs", "CS", self.ACCENT3)
 
             for w in (self.pit_box, self.cs_box):
-                ds_counters.addWidget(w, 1)   # stretch = 1
+                ds_counters.addWidget(w)
 
 
             ds_layout.addLayout(ds_counters)
@@ -431,8 +431,8 @@ if GUI_AVAILABLE:
             self.interests_sent_box = self._make_counter(
                 "interests_sent", "Interests Sent", self.ACCENT2
             )
-            self.data_packets_received_box = self._make_counter(
-                "data_packets_received", "Data Received", self.ERROR
+            self.data_packets_sent_box = self._make_counter(
+                "data_packets_sent", "Data Sent", self.SUCCESS
             )
 
             for w in (
@@ -450,9 +450,10 @@ if GUI_AVAILABLE:
             m_row2 = QHBoxLayout()
             m_row2.setSpacing(10)
 
-            self.data_packets_sent_box = self._make_counter(
-                "data_packets_sent", "Data Sent", self.SUCCESS
+            self.data_packets_received_box = self._make_counter(
+                "data_packets_received", "Data Received", self.ERROR
             )
+
             self.failed_packets_box = self._make_counter(
                 "failed_packets", "Failed Packets", self.INFO
             )
@@ -465,7 +466,7 @@ if GUI_AVAILABLE:
                 self.failed_packets_box,
                 self.total_data_bytes_received_box,
                 ):
-                m_row2.addWidget(w, 1)
+                m_row2.addWidget(w)
 
 
             m_layout.addLayout(m_row2)
@@ -519,10 +520,6 @@ if GUI_AVAILABLE:
         def _make_counter(self, metric_name: str, display_label: str, color: str):
             box = QFrame()
             box.setFrameShape(QFrame.StyledPanel)
-
-            # Let the box expand in both directions inside layouts
-            from PyQt5.QtWidgets import QSizePolicy
-            box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
             lay = QVBoxLayout(box)
             lay.setContentsMargins(10, 10, 10, 10)
