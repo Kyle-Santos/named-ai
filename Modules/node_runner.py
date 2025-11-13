@@ -108,7 +108,6 @@ def processor_thread(gui_callback=None):
                 gui_callback("ERROR", msg)
             time.sleep(0.1)
 
-
 def receiver(face, entry, gui_callback=None):
     sock = entry["sock"]
     sock.settimeout(1.0)  # Non-blocking with timeout
