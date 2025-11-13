@@ -281,6 +281,36 @@ if GUI_AVAILABLE:
             self.node_name = node_name
             self.current_table = "pit"  # Default to PIT table
 
+            # Determine colors based on node type
+            node_lower = self.node_name.lower()
+            if "/cam" in node_lower:
+                self.SUCCESS = "#00FFFF"  # cyan
+                self.INFO = "#66FF99"     # mint
+                self.WARN = "#CCCCFF"     # lavender
+                self.ERROR = "#E6F1FF"     # white
+                self.ACCENT = "#00FFFF"   # cyan
+                self.ACCENT2 = "#66FF99"  # mint
+                self.ACCENT3 = "#CCCCFF"  # lavender
+                bg_color = "#000000"
+            elif node_lower.startswith("/dlsu"):
+                self.SUCCESS = "#00BFFF"  # electric blue
+                self.INFO = "#5CFFB5"     # neon mint
+                self.WARN = "#E0C3FC"     # pale lilac
+                self.ERROR = "#f87171"    # default error
+                self.ACCENT = "#00BFFF"   # electric blue
+                self.ACCENT2 = "#5CFFB5"  # neon mint
+                self.ACCENT3 = "#E0C3FC"  # pale lilac
+                bg_color = "#001F3F"
+            else:
+                self.SUCCESS = "#34d399"
+                self.INFO = "#60a5fa"
+                self.WARN = "#fbbf24"
+                self.ERROR = "#f87171"
+                self.ACCENT = "#22d3ee"
+                self.ACCENT2 = "#60a5fa"
+                self.ACCENT3 = "#a78bfa"
+                bg_color = "#2b0071"
+
             self.setWindowTitle(f"NDN Node Monitor - {node_name}")
 
             self.setStyleSheet(self._get_default_style(bg_color))
@@ -487,7 +517,7 @@ if GUI_AVAILABLE:
             
             root.addLayout(bottom)
 
-        def _make_counter(self, label: str, color: str):
+        def _make_counter(self, metric_name: str, display_label: str, color: str):
             box = QFrame()
             box.setFrameShape(QFrame.StyledPanel)
 
@@ -496,11 +526,11 @@ if GUI_AVAILABLE:
 
             t = QLabel(display_label)
             t.setStyleSheet(f"color:{color}; font-size:11pt; font-weight:700;")
-            
+
             v = QLabel("0")
             v.setStyleSheet("font-size:20pt; font-weight:800;")
-            v.setObjectName(f"val_{label.lower()}")
-            
+            v.setObjectName(f"val_{metric_name}")
+
             lay.addWidget(t)
             lay.addWidget(v)
             lay.addStretch(1)
