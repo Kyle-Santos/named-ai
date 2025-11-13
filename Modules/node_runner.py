@@ -39,7 +39,7 @@ def load_node_config(config_path: str, node_name: str):
     NN.FIB = node_config.get("FIB", {})
     NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
     NN.initialize_content_store(node_config.get("storage", ""))
-    print("asdasda")
+
     NN.NODE_FUNCTIONS_MAPPING = node_config.get("node_functions_mapping", {})
 
     for func_name in node_config.get("functions", []):
@@ -164,16 +164,14 @@ def sender(gui_callback=None):
 
 def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
     """Main node runner with separated receiver and processor threads."""
+    NN.GUI_CALLBACK = gui_callback
     node_config = load_node_config(config_path, node_name)
     interfaces = create_interfaces(node_config)
     
-
     msg = f"{NN.NODE_NAME} running with faces: {list(interfaces.keys())}"
     print(f"\033[92m{msg}\033[0m")
     if gui_callback:
         gui_callback("SUCCESS", msg)
-
-    NN.GUI_CALLBACK = gui_callback
 
     threads = []
 
@@ -283,40 +281,15 @@ if GUI_AVAILABLE:
             self.node_name = node_name
             self.current_table = "pit"  # Default to PIT table
 
-            # Determine colors based on node type
-            node_lower = self.node_name.lower()
-            if "/cam" in node_lower:
-                self.SUCCESS = "#00FFFF"  # cyan
-                self.INFO = "#66FF99"     # mint
-                self.WARN = "#CCCCFF"     # lavender
-                self.ERROR = "#E6F1FF"     # white
-                self.ACCENT = "#00FFFF"   # cyan
-                self.ACCENT2 = "#66FF99"  # mint
-                self.ACCENT3 = "#CCCCFF"  # lavender
-                bg_color = "#000000"
-            elif node_lower.startswith("/dlsu"):
-                self.SUCCESS = "#00BFFF"  # electric blue
-                self.INFO = "#5CFFB5"     # neon mint
-                self.WARN = "#E0C3FC"     # pale lilac
-                self.ERROR = "#f87171"    # default error
-                self.ACCENT = "#00BFFF"   # electric blue
-                self.ACCENT2 = "#5CFFB5"  # neon mint
-                self.ACCENT3 = "#E0C3FC"  # pale lilac
-                bg_color = "#001F3F"
-            else:
-                self.SUCCESS = "#34d399"
-                self.INFO = "#60a5fa"
-                self.WARN = "#fbbf24"
-                self.ERROR = "#f87171"
-                self.ACCENT = "#22d3ee"
-                self.ACCENT2 = "#60a5fa"
-                self.ACCENT3 = "#a78bfa"
-                bg_color = "#2b0071"
-
             self.setWindowTitle(f"NDN Node Monitor - {node_name}")
             self.resize(550, 360)
             
-            self.setStyleSheet(self._get_default_style(bg_color))
+            # Try to load stylesheet, fallback to basic styling
+            try:
+                with open('Modules/styles.qss', 'r') as f:
+                    self.setStyleSheet(f.read())
+            except FileNotFoundError:
+                self.setStyleSheet(self._get_default_style())
             
             self._setup_ui()
             self._start_backend()
@@ -326,15 +299,15 @@ if GUI_AVAILABLE:
             self.timer.timeout.connect(self.refresh_stats)
             self.timer.start(800)
 
-        def _get_default_style(self, bg_color):
-            return f"""
-                QWidget {{ background-color: {bg_color}; color: #c7d2fe; }}
-                QTextEdit {{ background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px; }}
-                QLineEdit {{ background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px; }}
-                QPushButton {{ background-color: #3b82f6; border: none; border-radius: 6px; padding: 8px 16px; font-weight: 600; }}
-                QPushButton:hover {{ background-color: #2563eb; }}
-                QTableWidget {{ background-color: #1e293b; border: 1px solid #334155; }}
-                QHeaderView::section {{ background-color: #334155; color: #c7d2fe; padding: 8px; border: none; }}
+        def _get_default_style(self):
+            return """
+                QWidget { background-color: #0f172a; color: #c7d2fe; }
+                QTextEdit { background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px; }
+                QLineEdit { background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px; }
+                QPushButton { background-color: #3b82f6; border: none; border-radius: 6px; padding: 8px 16px; font-weight: 600; }
+                QPushButton:hover { background-color: #2563eb; }
+                QTableWidget { background-color: #1e293b; border: 1px solid #334155; }
+                QHeaderView::section { background-color: #334155; color: #c7d2fe; padding: 8px; border: none; }
             """
 
         def _setup_ui(self):
@@ -354,7 +327,7 @@ if GUI_AVAILABLE:
             leftlay.setSpacing(8)
             
             title_logs = QLabel("DEBUG LOGS")
-            title_logs.setStyleSheet(f"color:{self.SUCCESS}; font-weight:700; font-size:12pt;")
+            title_logs.setStyleSheet(f"color:{SUCCESS}; font-weight:700; font-size:12pt;")
             
             self.ns_label = QLabel(f"{self.node_name}")
             self.ns_label.setStyleSheet("background:#0b1020; border:1px solid #1f2a44; border-radius:6px; padding:4px 8px; color:#9ca3af;")
@@ -383,37 +356,20 @@ if GUI_AVAILABLE:
             rightlay.setSpacing(8)
             
             title_ds = QLabel("DATA STRUCTURES")
-            title_ds.setStyleSheet(f"color:{self.ACCENT2}; font-weight:700; font-size:12pt;")
+            title_ds.setStyleSheet(f"color:{ACCENT2}; font-weight:700; font-size:12pt;")
             rightlay.addWidget(title_ds)
-
+            
             # Counters
             counters = QHBoxLayout()
             counters.setSpacing(10)
-            self.pit_box = self._make_counter("pit", "PIT", self.ACCENT)
-            self.fib_box = self._make_counter("fib", "FIB", self.ACCENT2)
-            self.cs_box = self._make_counter("cs", "CS", self.ACCENT3)
-            self.face_box = self._make_counter("faces", "FACES", self.SUCCESS)
-
+            self.pit_box = self._make_counter("PIT", ACCENT)
+            self.fib_box = self._make_counter("FIB", ACCENT2)
+            self.cs_box = self._make_counter("CS", ACCENT3)
+            self.face_box = self._make_counter("FACES", SUCCESS)
+            
             for w in (self.pit_box, self.fib_box, self.cs_box, self.face_box):
                 counters.addWidget(w)
             rightlay.addLayout(counters)
-
-            # METRICS
-            metrics_title = QLabel("METRICS")
-            metrics_title.setStyleSheet(f"color:{self.WARN}; font-weight:700; font-size:12pt;")
-            rightlay.addWidget(metrics_title)
-
-            metrics_layout = QHBoxLayout()
-            metrics_layout.setSpacing(10)
-            self.interests_received_box = self._make_counter("interests_received", "Interests Recvd", self.WARN)
-            self.data_packets_received_box = self._make_counter("data_packets_received", "Data Recvd", self.ERROR)
-            self.data_packets_sent_box = self._make_counter("data_packets_sent", "Data Sent", self.SUCCESS)
-            self.failed_packets_box = self._make_counter("failed_packets", "Failed Pkts", self.INFO)
-            self.total_data_bytes_received_box = self._make_counter("total_data_bytes_received", "Total Bytes", self.ACCENT)
-
-            for w in (self.interests_received_box, self.data_packets_received_box, self.data_packets_sent_box, self.failed_packets_box, self.total_data_bytes_received_box):
-                metrics_layout.addWidget(w)
-            rightlay.addLayout(metrics_layout)
             
             # Data Structure Table (PIT by default)
             self.table = QTableWidget(0, 3)
@@ -429,11 +385,11 @@ if GUI_AVAILABLE:
             bottom = QHBoxLayout()
             bottom.setSpacing(8)
 
-            for label in ["show pit", "show cs", "clear logs"]:
+            for label in ["show pit", "show cs", "clear logs", "stats"]:
                 b = QPushButton(label)
                 b.clicked.connect(lambda checked=False, t=label: self.quick_command(t))
                 bottom.addWidget(b)
-
+            
             bottom.addStretch(1)
             
             self.cmd = QLineEdit()
@@ -449,19 +405,19 @@ if GUI_AVAILABLE:
             
             root.addLayout(bottom)
 
-        def _make_counter(self, metric_name: str, display_label: str, color: str):
+        def _make_counter(self, label: str, color: str):
             box = QFrame()
             box.setFrameShape(QFrame.StyledPanel)
             lay = QVBoxLayout(box)
             lay.setContentsMargins(10, 10, 10, 10)
-
-            t = QLabel(display_label)
+            
+            t = QLabel(label)
             t.setStyleSheet(f"color:{color}; font-size:11pt; font-weight:700;")
-
+            
             v = QLabel("0")
             v.setStyleSheet("font-size:20pt; font-weight:800;")
-            v.setObjectName(f"val_{metric_name}")
-
+            v.setObjectName(f"val_{label.lower()}")
+            
             lay.addWidget(t)
             lay.addWidget(v)
             lay.addStretch(1)
@@ -485,9 +441,9 @@ if GUI_AVAILABLE:
             self.table.setHorizontalHeaderLabels(headers)
 
         def append_log(self, level: str, line: str):
-            color = {"SUCCESS": self.SUCCESS, "INFO": self.INFO, "WARN": self.WARN, "ERROR": self.ERROR}.get(level, self.INFO)
+            color = {"SUCCESS": SUCCESS, "INFO": INFO, "WARN": WARN, "ERROR": ERROR}.get(level, INFO)
             ts = datetime.now().strftime("%I:%M:%S %p")
-            html = f'<span style="color:{self.INFO}">[{ts}]</span> <span style="color:{color}">[{level}]</span> {line}'
+            html = f'<span style="color:{INFO}">[{ts}]</span> <span style="color:{color}">[{level}]</span> {line}'
             self.logs.append(html)
             self.logs.moveCursor(QTextCursor.End)
 
@@ -575,12 +531,11 @@ if GUI_AVAILABLE:
             fib = getattr(NN, "FIB", {})
             cs = getattr(NN, "CS", {})
             faces = getattr(NN, "FACES", None)
-            metrics = getattr(NN, "METRICS", {})
-
+            
             self._set_counter("pit", self._safe_len(pit))
             self._set_counter("fib", self._safe_len(fib))
             self._set_counter("cs", self._safe_len(cs))
-
+            
             if isinstance(faces, (list, dict)):
                 self._set_counter("faces", self._safe_len(faces))
             else:
@@ -592,10 +547,6 @@ if GUI_AVAILABLE:
                     self._set_counter("faces", len(unique_faces) or 0)
                 except Exception:
                     self._set_counter("faces", 0)
-
-            # Update METRICS counters
-            for metric_name, value in metrics.items():
-                self._set_counter(metric_name, value)
             
             # Update table based on current mode
             try:
