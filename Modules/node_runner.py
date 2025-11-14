@@ -149,6 +149,7 @@ def receiver(face, entry, gui_callback=None):
 def sender(gui_callback=None):
     while True:
         task = SEND_QUEUE.get()
+
         try:
             sock, addr, response = task
             for resp in response:
@@ -464,7 +465,7 @@ if GUI_AVAILABLE:
                 "data_packets_received", "Data Received", self.ERROR
             )
             self.total_data_bytes_received_box = self._make_counter(
-                "total_data_bytes_received", "Total Bytes", self.ACCENT
+                "total_data_bytes_received", "Total KBs Rec", self.ACCENT
             )
 
             right_vbox.addWidget(self.interests_received_box)
@@ -628,6 +629,7 @@ if GUI_AVAILABLE:
                                 
                     _, dest_port = NN.lookup_fib(name)
                     SEND_QUEUE.put((NN.INTERFACES["face0"]["sock"], (NN.IP_ADDR, dest_port), [interest_packet]))
+                    NN.update_metrics("interests_sent")
 
                     NN.store_interest(name, None, (NN.IP_ADDR, NN.INTERFACES["face0"]["port"]))
                     msg = f"Sending Interest for '{name}' at {time.strftime('%H:%M:%S', time.localtime(NN.get_PIT_entry(name)['time']))}"
@@ -671,7 +673,10 @@ if GUI_AVAILABLE:
 
             # Update METRICS counters
             for metric_name, value in metrics.items():
+                if metric_name == "total_data_bytes_received":
+                    value = round(value / 1024, 2)  # Convert bytes to kilobytes
                 self._set_counter(metric_name, value)
+                
             
             # Update table based on current mode
             try:
@@ -731,6 +736,22 @@ if GUI_AVAILABLE:
                 self.append_log("INFO", repr(obj))
             except Exception:
                 self.append_log("INFO", str(obj))
+        
+        def closeEvent(self, event):
+            """Ensure backend threads and the entire program exit when GUI window is closed."""
+            try:
+                self.append_log("INFO", "Shutting down...")
+
+                # Stop refresh timer
+                if hasattr(self, "timer"):
+                    self.timer.stop()
+
+                # Hard exit (forces all threads to close)
+                os._exit(0)
+
+            except Exception as e:
+                print("Error during shutdown:", e)
+                os._exit(1)
 
 
 # =============================================================================
