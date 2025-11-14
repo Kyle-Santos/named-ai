@@ -8,6 +8,8 @@ import time
 import threading
 
 LOGS = []
+# GUI_QUEUE = None
+GUI_CALLBACK = None
 
 def log(level, message, path=""):
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -16,6 +18,11 @@ def log(level, message, path=""):
         level_upper = "INFO"  # default to INFO if invalid level
     entry = {"level": level_upper, "message": message, "path": path, "timestamp": timestamp}
     LOGS.append(entry)
+
+    if GUI_CALLBACK:
+        GUI_CALLBACK(level_upper, message)
+    # GUI_QUEUE.put((level, message))   # put into thread-safe queue
+
     print(f"\n[{timestamp}] [{level_upper}] {message}" + (f" {path}" if path else ""))
 
 
@@ -65,7 +72,6 @@ def create_interface(interfaces):
         }
 
         log("INFO", f"Created socket for {face} on {IP_ADDR}:{port}")
-
     return INTERFACES
 
 
@@ -184,6 +190,7 @@ FRAG_BUFFER = {}
 
 # metrics
 METRICS = {
+    "interests_sent": 0,
     "interests_received": 0,
     "data_packets_received": 0,
     "data_packets_sent": 0,
@@ -197,6 +204,7 @@ def update_metrics(metric_name, value=1):
         log("WARN", f"Unknown metric '{metric_name}'")
         return
     METRICS[metric_name] += value
+
 
 def store_interest(name, face, addr, funcs=None, waiting_for=None):
     """Store an Interest in the PIT."""
@@ -339,7 +347,6 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
         log("INFO", f"Served '{name}' from CS to {addr}")
 
         update_metrics("data_packets_sent")
-        update_metrics("total_data_bytes_received", len(bytes))
 
         return 
 
@@ -373,8 +380,6 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                 for resp in response:
                     parsed, _ = parse_packet(resp)
                     process_data(parsed, resp, sock, SEND_QUEUE)
-                update_metrics("data_packets_sent")
-                update_metrics("total_data_bytes_received", len(bytes))
                 return
 
             # Forward Interest for base content (not recursive call)
@@ -385,6 +390,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                 source_port = INTERFACES[forward_face]["port"]
                 source_addr = ("127.0.0.1", source_port)
                 process_interest({ "name" : base_name }, source_addr, INTERFACES[forward_face]["sock"], SEND_QUEUE, None)
+                update_metrics("interests_sent")
             else:
                 # Failed NFN Forwarding
                 update_metrics("failed_packets")
@@ -401,22 +407,19 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
 
             if route:
                 forward_face, dest_port = route
-                source_port = INTERFACES[forward_face]["port"]
                 dest_addr = ("127.0.0.1", dest_port)
 
                 # Build Interest packet
                 interest_packet = build_interest_packet(name)
-                log("INFO", f"Raw Interest Packet: {interest_packet}")
-                log("INFO", f"Packet Size: {len(interest_packet)} bytes")
+                log("INFO", f"Forwarding Interest for '{name}' to {forward_face}")
 
                 # store interest to PIT
                 store_interest(name, interface, addr)
                 log("INFO", f"PIT: {PIT}")
 
                 # send
-                log("INFO", f"Sending Interest for '{name}'")
                 SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [interest_packet]))
-                update_metrics("data_packets_sent")
+                update_metrics("interests_sent")
                 return
             else:
                 log("WARN", f"No route found for Interest '{name}', dropping")
@@ -438,7 +441,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
 
             SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [build_interest_packet(name)]))
             store_interest(name, interface, addr)
-            update_metrics("data_packets_sent")
+            update_metrics("interests_sent")
         else:
             # drop the packet since no route found
             log("WARN", f"No route found for Interest '{name}', dropping")
@@ -451,11 +454,11 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
     data = packet["data"]
     frag_num = packet.get("frag_num")
     frag_total = packet.get("frag_total")
-    update_metrics("data_packets_received")
-    update_metrics("total_data_bytes_received", len(raw_packet))
-    # METRICS["total_data_bytes_received"] += len(raw_packet)
 
     with PIT_LOCK:
+        update_metrics("data_packets_received")
+        update_metrics("total_data_bytes_received", len(data))
+
         # Find the relevant PIT entry
         pit_entry, original_name, waiting_for_name = find_pit_entry(name)
             
@@ -489,11 +492,12 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                     # Forward the fragment
                     SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
                     log("INFO", f"Forwarding fragment {frag_num}/{frag_total} for {name} to {PIT_MAPPING[face]}")
-                    update_metrics("data_packets_sent")
+                    
                     # Cache if all fragments received
                     if len(FRAG_BUFFER[name]["frags"]) == frag_total:
                         reassembled_data = reassemble_fragments(name, frag_total)
                         cleanup_flags["delete_pit"] = True
+                        update_metrics("data_packets_sent")
                         processed_data = reassembled_data  # Return to be saved once
                     
                     processed_data = None
@@ -501,9 +505,10 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                 else:
                     SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
                     log("INFO", f"Forwarding packet for {original_name} to {PIT_MAPPING[face]}")
-                    update_metrics("data_packets_sent")
+
                     cleanup_flags["delete_pit"] = True
                     processed_data = data
+                    update_metrics("data_packets_sent")
 
         # Save data after all processing
         if processed_data is not None and cleanup_flags["delete_pit"]:

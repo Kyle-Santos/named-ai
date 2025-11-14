@@ -20,7 +20,7 @@ try:
     from PyQt5.QtGui import QFont, QTextCursor
     from PyQt5.QtWidgets import (
         QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLabel, QLineEdit,
-        QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QFrame
+        QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QFrame, QSizePolicy
     )
     GUI_AVAILABLE = True
 except ImportError:
@@ -39,6 +39,7 @@ def load_node_config(config_path: str, node_name: str):
     NN.FIB = node_config.get("FIB", {})
     NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
     NN.initialize_content_store(node_config.get("storage", ""))
+
     NN.NODE_FUNCTIONS_MAPPING = node_config.get("node_functions_mapping", {})
 
     for func_name in node_config.get("functions", []):
@@ -114,7 +115,6 @@ def processor_thread(gui_callback=None):
             traceback.print_exc()  # Print full stack trace
             time.sleep(0.1)
 
-
 def receiver(face, entry, gui_callback=None):
     sock = entry["sock"]
     sock.settimeout(1.0)  # Non-blocking with timeout
@@ -149,6 +149,7 @@ def receiver(face, entry, gui_callback=None):
 def sender(gui_callback=None):
     while True:
         task = SEND_QUEUE.get()
+
         try:
             sock, addr, response = task
             for resp in response:
@@ -163,10 +164,11 @@ def sender(gui_callback=None):
 
 def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
     """Main node runner with separated receiver and processor threads."""
-
+    NN.GUI_CALLBACK = gui_callback
+    time.sleep(1.0)
     node_config = load_node_config(config_path, node_name)
     interfaces = create_interfaces(node_config)
-
+    
     msg = f"{NN.NODE_NAME} running with faces: {list(interfaces.keys())}"
     print(f"\033[92m{msg}\033[0m")
     if gui_callback:
@@ -274,21 +276,50 @@ if GUI_AVAILABLE:
             pass
 
     class NodeMonitor(QWidget):
+        log_signal = pyqtSignal(str, str)  # level, line
+        
         def __init__(self, start_mode: str, node_name: str):
             super().__init__()
             self.start_mode = start_mode
             self.node_name = node_name
             self.current_table = "pit"  # Default to PIT table
 
+            # Determine colors based on node type
+            node_lower = self.node_name.lower()
+            if "/cam" in node_lower:
+                self.SUCCESS = "#00FFFF"  # cyan
+                self.INFO = "#66FF99"     # mint
+                self.WARN = "#CCCCFF"     # lavender
+                self.ERROR = "#E6F1FF"     # white
+                self.ACCENT = "#00FFFF"   # cyan
+                self.ACCENT2 = "#66FF99"  # mint
+                self.ACCENT3 = "#CCCCFF"  # lavender
+                bg_color = "#000000"
+            elif node_lower.startswith("/dlsu"):
+                self.SUCCESS = "#00BFFF"  # electric blue
+                self.INFO = "#5CFFB5"     # neon mint
+                self.WARN = "#E0C3FC"     # pale lilac
+                self.ERROR = "#f87171"    # default error
+                self.ACCENT = "#00BFFF"   # electric blue
+                self.ACCENT2 = "#5CFFB5"  # neon mint
+                self.ACCENT3 = "#E0C3FC"  # pale lilac
+                bg_color = "#001F3F"
+            else:
+                self.SUCCESS = "#34d399"
+                self.INFO = "#60a5fa"
+                self.WARN = "#fbbf24"
+                self.ERROR = "#f87171"
+                self.ACCENT = "#22d3ee"
+                self.ACCENT2 = "#60a5fa"
+                self.ACCENT3 = "#a78bfa"
+                bg_color = "#2b0071"
+
             self.setWindowTitle(f"NDN Node Monitor - {node_name}")
-            self.resize(550, 360)
-            
-            # Try to load stylesheet, fallback to basic styling
-            try:
-                with open('Modules/styles.qss', 'r') as f:
-                    self.setStyleSheet(f.read())
-            except FileNotFoundError:
-                self.setStyleSheet(self._get_default_style())
+
+            # connect signal to slot
+            self.log_signal.connect(self.append_log)
+
+            self.setStyleSheet(self._get_default_style(bg_color))
             
             self._setup_ui()
             self._start_backend()
@@ -298,15 +329,15 @@ if GUI_AVAILABLE:
             self.timer.timeout.connect(self.refresh_stats)
             self.timer.start(800)
 
-        def _get_default_style(self):
-            return """
-                QWidget { background-color: #0f172a; color: #c7d2fe; }
-                QTextEdit { background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px; }
-                QLineEdit { background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px; }
-                QPushButton { background-color: #3b82f6; border: none; border-radius: 6px; padding: 8px 16px; font-weight: 600; }
-                QPushButton:hover { background-color: #2563eb; }
-                QTableWidget { background-color: #1e293b; border: 1px solid #334155; }
-                QHeaderView::section { background-color: #334155; color: #c7d2fe; padding: 8px; border: none; }
+        def _get_default_style(self, bg_color):
+            return f"""
+                QWidget {{ background-color: {bg_color}; color: #c7d2fe; }}
+                QTextEdit {{ background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px; }}
+                QLineEdit {{ background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px; }}
+                QPushButton {{ background-color: #3b82f6; border: none; border-radius: 6px; padding: 8px 16px; font-weight: 600; }}
+                QPushButton:hover {{ background-color: #2563eb; }}
+                QTableWidget {{ background-color: #1e293b; border: 1px solid #334155; }}
+                QHeaderView::section {{ background-color: #334155; color: #c7d2fe; padding: 8px; border: none; }}
             """
 
         def _setup_ui(self):
@@ -318,7 +349,9 @@ if GUI_AVAILABLE:
             split.setSpacing(10)
             root.addLayout(split)
             
-            # Left Panel - Logs
+            # -----------------------------
+            # Left Panel – Logs
+            # -----------------------------
             self.left = QFrame()
             self.left.setFrameShape(QFrame.StyledPanel)
             leftlay = QVBoxLayout(self.left)
@@ -326,10 +359,13 @@ if GUI_AVAILABLE:
             leftlay.setSpacing(8)
             
             title_logs = QLabel("DEBUG LOGS")
-            title_logs.setStyleSheet(f"color:{SUCCESS}; font-weight:700; font-size:12pt;")
+            title_logs.setStyleSheet(f"color:{self.SUCCESS}; font-weight:700; font-size:12pt;")
             
             self.ns_label = QLabel(f"{self.node_name}")
-            self.ns_label.setStyleSheet("background:#0b1020; border:1px solid #1f2a44; border-radius:6px; padding:4px 8px; color:#9ca3af;")
+            self.ns_label.setStyleSheet(
+                "background:#0b1020; border:1px solid #1f2a44; "
+                "border-radius:6px; padding:4px 8px; color:#9ca3af;"
+            )
             
             tt = QHBoxLayout()
             tt.addWidget(title_logs)
@@ -347,55 +383,139 @@ if GUI_AVAILABLE:
             
             split.addWidget(self.left, 1)
             
-            # Right Panel - Data Structures
+            # -----------------------------
+            # Right Panel – Stats & Table
+            # -----------------------------
             self.right = QFrame()
             self.right.setFrameShape(QFrame.StyledPanel)
             rightlay = QVBoxLayout(self.right)
             rightlay.setContentsMargins(12, 12, 12, 12)
             rightlay.setSpacing(8)
-            
+
+            # =============================
+            # TOP ROW: DATA STRUCTURES | METRICS
+            # =============================
+            stats_row = QHBoxLayout()
+            stats_row.setSpacing(12)
+
+            # ----- Data Structures group -----
+            ds_frame = QFrame()
+            ds_layout = QVBoxLayout(ds_frame)
+            ds_layout.setContentsMargins(10, 10, 10, 10)
+            ds_layout.setSpacing(8)
+
             title_ds = QLabel("DATA STRUCTURES")
-            title_ds.setStyleSheet(f"color:{ACCENT2}; font-weight:700; font-size:12pt;")
-            rightlay.addWidget(title_ds)
-            
-            # Counters
-            counters = QHBoxLayout()
-            counters.setSpacing(10)
-            self.pit_box = self._make_counter("PIT", ACCENT)
-            self.fib_box = self._make_counter("FIB", ACCENT2)
-            self.cs_box = self._make_counter("CS", ACCENT3)
-            self.face_box = self._make_counter("FACES", SUCCESS)
-            
-            for w in (self.pit_box, self.fib_box, self.cs_box, self.face_box):
-                counters.addWidget(w)
-            rightlay.addLayout(counters)
-            
-            # Data Structure Table (PIT by default)
+            title_ds.setStyleSheet(f"color:{self.ACCENT2}; font-weight:700; font-size:12pt;")
+            ds_layout.addWidget(title_ds)
+
+            ds_counters = QVBoxLayout()
+            ds_counters.setSpacing(5)
+
+            # Only PIT and CS
+            self.pit_box = self._make_counter("pit", "PIT", self.ACCENT)
+            self.cs_box = self._make_counter("cs", "CS", self.ACCENT3)
+
+            ds_counters.addWidget(self.pit_box)
+            ds_counters.addWidget(self.cs_box)
+
+
+            ds_layout.addLayout(ds_counters)
+            stats_row.addWidget(ds_frame, 1)
+
+            # ----- Metrics group -----
+            metrics_frame = QFrame()
+            m_layout = QVBoxLayout(metrics_frame)
+            m_layout.setContentsMargins(10, 10, 10, 10)
+            m_layout.setSpacing(8)
+
+            metrics_title = QLabel("METRICS")
+            metrics_title.setStyleSheet(f"color:{self.WARN}; font-weight:700; font-size:12pt;")
+            m_layout.addWidget(metrics_title)
+
+            # Create horizontal layout for two vertical columns
+            metrics_hbox = QHBoxLayout()
+            metrics_hbox.setSpacing(10)
+
+            # Left vertical column
+            left_vbox = QVBoxLayout()
+            left_vbox.setSpacing(8)
+
+            self.interests_sent_box = self._make_counter(
+                "interests_sent", "Interests Sent", self.ACCENT2
+            )
+            self.data_packets_sent_box = self._make_counter(
+                "data_packets_sent", "Data Sent", self.SUCCESS
+            )
+            self.failed_packets_box = self._make_counter(
+                "failed_packets", "Failed Packets", self.INFO
+            )
+
+            left_vbox.addWidget(self.interests_sent_box)
+            left_vbox.addWidget(self.data_packets_sent_box)
+            left_vbox.addWidget(self.failed_packets_box)
+
+            # Right vertical column
+            right_vbox = QVBoxLayout()
+            right_vbox.setSpacing(8)
+
+            self.interests_received_box = self._make_counter(
+                "interests_received", "Interests Received", self.WARN
+            )
+            self.data_packets_received_box = self._make_counter(
+                "data_packets_received", "Data Received", self.ERROR
+            )
+            self.total_data_bytes_received_box = self._make_counter(
+                "total_data_bytes_received", "Total KBs Rec", self.ACCENT
+            )
+
+            right_vbox.addWidget(self.interests_received_box)
+            right_vbox.addWidget(self.data_packets_received_box)
+            right_vbox.addWidget(self.total_data_bytes_received_box)
+
+            metrics_hbox.addLayout(left_vbox)
+            metrics_hbox.addLayout(right_vbox)
+
+            m_layout.addLayout(metrics_hbox)
+
+            stats_row.addWidget(metrics_frame, 1)
+
+            # Add the whole top row to the right panel
+            rightlay.addLayout(stats_row)
+
+            # =============================
+            # TABLE (PIT / CS)
+            # =============================
             self.table = QTableWidget(0, 3)
             self.set_table_headers("pit")
             self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
             self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
             self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
             rightlay.addWidget(self.table, 1)
+
+            rightlay.setStretch(0, 1)   # stats_row
+            rightlay.setStretch(1, 2)   # table (still gets more, but stats_row can grow)
             
             split.addWidget(self.right, 1)
             
+            # -----------------------------
             # Bottom Command Bar
+            # -----------------------------
             bottom = QHBoxLayout()
             bottom.setSpacing(8)
 
-            for label in ["show pit", "show cs", "clear logs", "stats"]:
+            for label in ["show pit", "show cs", "clear logs"]:
                 b = QPushButton(label)
                 b.clicked.connect(lambda checked=False, t=label: self.quick_command(t))
                 bottom.addWidget(b)
-            
+
             bottom.addStretch(1)
             
             self.cmd = QLineEdit()
             self.cmd.setPlaceholderText("Enter command (e.g., send interest /dlsu/ccs/img21)")
             self.cmd.returnPressed.connect(self.handle_command)
-            if self.start_mode == "client":
-                bottom.addWidget(self.cmd, 3)
+            # if self.start_mode == "client":
+            #     bottom.addWidget(self.cmd, 3)
+            bottom.addWidget(self.cmd, 3)
             
             self.exec_btn = QPushButton("EXECUTE")
             self.exec_btn.clicked.connect(self.handle_command)
@@ -404,23 +524,25 @@ if GUI_AVAILABLE:
             
             root.addLayout(bottom)
 
-        def _make_counter(self, label: str, color: str):
+        def _make_counter(self, metric_name: str, display_label: str, color: str):
             box = QFrame()
             box.setFrameShape(QFrame.StyledPanel)
+
             lay = QVBoxLayout(box)
-            lay.setContentsMargins(10, 10, 10, 10)
-            
-            t = QLabel(label)
+            lay.setContentsMargins(5, 10, 5, 10)
+
+            t = QLabel(display_label)
             t.setStyleSheet(f"color:{color}; font-size:11pt; font-weight:700;")
-            
+
             v = QLabel("0")
             v.setStyleSheet("font-size:20pt; font-weight:800;")
-            v.setObjectName(f"val_{label.lower()}")
-            
+            v.setObjectName(f"val_{metric_name}")
+
             lay.addWidget(t)
             lay.addWidget(v)
             lay.addStretch(1)
             return box
+
 
         def _set_counter(self, name: str, value: int):
             lab = self.findChild(QLabel, f"val_{name}")
@@ -440,9 +562,9 @@ if GUI_AVAILABLE:
             self.table.setHorizontalHeaderLabels(headers)
 
         def append_log(self, level: str, line: str):
-            color = {"SUCCESS": SUCCESS, "INFO": INFO, "WARN": WARN, "ERROR": ERROR}.get(level, INFO)
+            color = {"SUCCESS": self.SUCCESS, "INFO": self.INFO, "WARN": self.WARN, "ERROR": self.ERROR}.get(level, self.INFO)
             ts = datetime.now().strftime("%I:%M:%S %p")
-            html = f'<span style="color:{INFO}">[{ts}]</span> <span style="color:{color}">[{level}]</span> {line}'
+            html = f'<span style="color:{self.INFO}">[{ts}]</span> <span style="color:{color}">[{level}]</span> {line}'
             self.logs.append(html)
             self.logs.moveCursor(QTextCursor.End)
 
@@ -450,7 +572,7 @@ if GUI_AVAILABLE:
             """Start the node/client backend in a separate thread"""
             def backend_wrapper():
                 try:
-                    run_node(self.node_name, gui_callback=self.append_log)
+                    run_node(self.node_name, gui_callback=self.log_signal.emit)
                 except Exception as e:
                     self.append_log("ERROR", f"Backend error: {e}")
                     import traceback
@@ -507,6 +629,7 @@ if GUI_AVAILABLE:
                                 
                     _, dest_port = NN.lookup_fib(name)
                     SEND_QUEUE.put((NN.INTERFACES["face0"]["sock"], (NN.IP_ADDR, dest_port), [interest_packet]))
+                    NN.update_metrics("interests_sent")
 
                     NN.store_interest(name, None, (NN.IP_ADDR, NN.INTERFACES["face0"]["port"]))
                     msg = f"Sending Interest for '{name}' at {time.strftime('%H:%M:%S', time.localtime(NN.get_PIT_entry(name)['time']))}"
@@ -530,11 +653,12 @@ if GUI_AVAILABLE:
             fib = getattr(NN, "FIB", {})
             cs = getattr(NN, "CS", {})
             faces = getattr(NN, "FACES", None)
-            
+            metrics = getattr(NN, "METRICS", {})
+
             self._set_counter("pit", self._safe_len(pit))
             self._set_counter("fib", self._safe_len(fib))
             self._set_counter("cs", self._safe_len(cs))
-            
+
             if isinstance(faces, (list, dict)):
                 self._set_counter("faces", self._safe_len(faces))
             else:
@@ -546,6 +670,13 @@ if GUI_AVAILABLE:
                     self._set_counter("faces", len(unique_faces) or 0)
                 except Exception:
                     self._set_counter("faces", 0)
+
+            # Update METRICS counters
+            for metric_name, value in metrics.items():
+                if metric_name == "total_data_bytes_received":
+                    value = round(value / 1024, 2)  # Convert bytes to kilobytes
+                self._set_counter(metric_name, value)
+                
             
             # Update table based on current mode
             try:
@@ -605,6 +736,22 @@ if GUI_AVAILABLE:
                 self.append_log("INFO", repr(obj))
             except Exception:
                 self.append_log("INFO", str(obj))
+        
+        def closeEvent(self, event):
+            """Ensure backend threads and the entire program exit when GUI window is closed."""
+            try:
+                self.append_log("INFO", "Shutting down...")
+
+                # Stop refresh timer
+                if hasattr(self, "timer"):
+                    self.timer.stop()
+
+                # Hard exit (forces all threads to close)
+                os._exit(0)
+
+            except Exception as e:
+                print("Error during shutdown:", e)
+                os._exit(1)
 
 
 # =============================================================================
