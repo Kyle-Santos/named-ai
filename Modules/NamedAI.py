@@ -8,17 +8,21 @@ import time
 import threading
 
 LOGS = []
+# GUI_QUEUE = None
+GUI_CALLBACK = None
 
 def log(level, message, path=""):
-    global GUI_CALLBACK
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     level_upper = level.upper()
     if level_upper not in ["INFO", "WARN", "ERROR", "SUCCESS"]:
         level_upper = "INFO"  # default to INFO if invalid level
     entry = {"level": level_upper, "message": message, "path": path, "timestamp": timestamp}
     LOGS.append(entry)
-    if callable(GUI_CALLBACK):
+
+    if GUI_CALLBACK:
         GUI_CALLBACK(level_upper, message)
+    # GUI_QUEUE.put((level, message))   # put into thread-safe queue
+
     print(f"\n[{timestamp}] [{level_upper}] {message}" + (f" {path}" if path else ""))
 
 
@@ -68,7 +72,6 @@ def create_interface(interfaces):
         }
 
         log("INFO", f"Created socket for {face} on {IP_ADDR}:{port}")
-
     return INTERFACES
 
 
@@ -185,10 +188,9 @@ NODE_FUNCTIONS_MAPPING = {}
 
 FRAG_BUFFER = {}
 
-GUI_CALLBACK = None
-
 # metrics
 METRICS = {
+    "interests_sent": 0,
     "interests_received": 0,
     "data_packets_received": 0,
     "data_packets_sent": 0,
@@ -198,10 +200,11 @@ METRICS = {
 
 def update_metrics(metric_name, value=1):
     """ Update a specific metric counter."""
-    if metric_name not in METRICS:
-        log("WARN", f"Unknown metric '{metric_name}'")
-        return
-    METRICS[metric_name] += value
+    # if metric_name not in METRICS:
+    #     log("WARN", f"Unknown metric '{metric_name}'")
+    #     return
+    # METRICS[metric_name] += value
+    return
 
 def store_interest(name, face, addr, funcs=None, waiting_for=None):
     """Store an Interest in the PIT."""
@@ -456,11 +459,12 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
     data = packet["data"]
     frag_num = packet.get("frag_num")
     frag_total = packet.get("frag_total")
-    update_metrics("data_packets_received")
-    update_metrics("total_data_bytes_received", len(raw_packet))
-    # METRICS["total_data_bytes_received"] += len(raw_packet)
 
     with PIT_LOCK:
+        update_metrics("data_packets_received")
+        update_metrics("total_data_bytes_received", len(raw_packet))
+        # METRICS["total_data_bytes_received"] += len(raw_packet)
+
         # Find the relevant PIT entry
         pit_entry, original_name, waiting_for_name = find_pit_entry(name)
             

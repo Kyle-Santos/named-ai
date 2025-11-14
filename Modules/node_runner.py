@@ -164,6 +164,7 @@ def sender(gui_callback=None):
 def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
     """Main node runner with separated receiver and processor threads."""
     NN.GUI_CALLBACK = gui_callback
+    time.sleep(1.0)
     node_config = load_node_config(config_path, node_name)
     interfaces = create_interfaces(node_config)
     
@@ -274,6 +275,8 @@ if GUI_AVAILABLE:
             pass
 
     class NodeMonitor(QWidget):
+        log_signal = pyqtSignal(str, str)  # level, line
+        
         def __init__(self, start_mode: str, node_name: str):
             super().__init__()
             self.start_mode = start_mode
@@ -311,6 +314,9 @@ if GUI_AVAILABLE:
                 bg_color = "#2b0071"
 
             self.setWindowTitle(f"NDN Node Monitor - {node_name}")
+
+            # connect signal to slot
+            self.log_signal.connect(self.append_log)
 
             self.setStyleSheet(self._get_default_style(bg_color))
             
@@ -506,8 +512,9 @@ if GUI_AVAILABLE:
             self.cmd = QLineEdit()
             self.cmd.setPlaceholderText("Enter command (e.g., send interest /dlsu/ccs/img21)")
             self.cmd.returnPressed.connect(self.handle_command)
-            if self.start_mode == "client":
-                bottom.addWidget(self.cmd, 3)
+            # if self.start_mode == "client":
+            #     bottom.addWidget(self.cmd, 3)
+            bottom.addWidget(self.cmd, 3)
             
             self.exec_btn = QPushButton("EXECUTE")
             self.exec_btn.clicked.connect(self.handle_command)
@@ -564,7 +571,7 @@ if GUI_AVAILABLE:
             """Start the node/client backend in a separate thread"""
             def backend_wrapper():
                 try:
-                    run_node(self.node_name, gui_callback=self.append_log)
+                    run_node(self.node_name, gui_callback=self.log_signal.emit)
                 except Exception as e:
                     self.append_log("ERROR", f"Backend error: {e}")
                     import traceback
