@@ -411,7 +411,7 @@ if GUI_AVAILABLE:
             ds_counters = QVBoxLayout()
             ds_counters.setSpacing(5)
 
-            # Only PIT and CS
+            # Data Structures: PIT, CS
             self.pit_box = self._make_counter("pit", "PIT", self.ACCENT)
             self.cs_box = self._make_counter("cs", "CS", self.ACCENT3)
 
@@ -483,7 +483,7 @@ if GUI_AVAILABLE:
             rightlay.addLayout(stats_row)
 
             # =============================
-            # TABLE (PIT / CS)
+            # TABLE (PIT / CS / FIB)
             # =============================
             self.table = QTableWidget(0, 3)
             self.set_table_headers("pit")
@@ -503,7 +503,7 @@ if GUI_AVAILABLE:
             bottom = QHBoxLayout()
             bottom.setSpacing(8)
 
-            for label in ["show pit", "show cs", "clear logs"]:
+            for label in ["show pit", "show cs", "show fib", "clear logs"]:
                 b = QPushButton(label)
                 b.clicked.connect(lambda checked=False, t=label: self.quick_command(t))
                 bottom.addWidget(b)
@@ -607,7 +607,7 @@ if GUI_AVAILABLE:
                 
                 if raw.lower().startswith("show "):
                     what = raw.split(" ", 1)[1].strip().lower()
-                    if what in ("pit", "cs"):
+                    if what in ("pit", "cs", "fib"):
                         self.current_table = what
                         self.set_table_headers(what)
                         self.refresh_stats()
@@ -699,6 +699,15 @@ if GUI_AVAILABLE:
                             face = entry.get("interface", "")
                             time_val = entry.get("time", "")
                             entries.append((name, face, time.strftime('%H:%M:%S', time.localtime(time_val))))
+                elif self.current_table == "fib":
+                    if isinstance(fib, dict):
+                        for prefix, faces in fib.items():
+                            if isinstance(faces, list):
+                                faces_str = ", ".join(str(f) for f in faces)
+                                count = len(faces)
+                                entries.append((prefix, faces_str, str(count)))
+                            else:
+                                entries.append((prefix, str(faces), "1"))
 
                 self.table.setRowCount(len(entries))
 
