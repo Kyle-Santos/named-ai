@@ -161,6 +161,54 @@ def parse_packet(packet_bytes):
 
 
 
+#######################
+# Metrics Calculation #
+#######################
+
+# metrics
+METRICS = {
+    "interests_sent": 0,
+    "interests_received": 0,
+    "data_packets_received": 0,
+    "data_packets_sent": 0,
+    "failed_packets": 0,
+    "total_data_bytes_received": 0,
+    
+    "ave_RTT": 0.0,
+
+    "PDR": 0.0,
+    
+    "latency": 0.0,
+
+    "throughput": 0.0,
+    "test_start_time": 0.0,
+}
+
+def update_metrics(metric_name, value=1):
+    """ Update a specific metric counter."""
+    if metric_name not in METRICS:
+        log("WARN", f"Unknown metric '{metric_name}'")
+        return
+    METRICS[metric_name] += value
+
+def get_metrics():
+    """Retrieve current metrics."""
+    # Calculate PDR
+    interests_sent = METRICS["interests_sent"]
+    data_received = METRICS["data_packets_received"]
+    if interests_sent > 0:
+        METRICS["PDR"] = data_received / interests_sent * 100.0
+    else:
+        METRICS["PDR"] = 0.0
+
+    # Calculate throughput (bytes/sec)
+    data_bytes = METRICS["total_data_bytes_received"]
+
+    # Calculate latency 
+    METRICS["latency"] = 0.0
+
+
+    return METRICS 
 
 
 
@@ -187,24 +235,6 @@ FUNCTIONS_TABLE = {}   # Functions Table
 NODE_FUNCTIONS_MAPPING = {}
 
 FRAG_BUFFER = {}
-
-# metrics
-METRICS = {
-    "interests_sent": 0,
-    "interests_received": 0,
-    "data_packets_received": 0,
-    "data_packets_sent": 0,
-    "failed_packets": 0,
-    "total_data_bytes_received": 0,
-}
-
-def update_metrics(metric_name, value=1):
-    """ Update a specific metric counter."""
-    if metric_name not in METRICS:
-        log("WARN", f"Unknown metric '{metric_name}'")
-        return
-    METRICS[metric_name] += value
-
 
 def store_interest(name, face, addr, funcs=None, waiting_for=None):
     """Store an Interest in the PIT."""
@@ -524,8 +554,17 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                 # cleanup buffer
                 del FRAG_BUFFER[original_name] 
 
-            # Response Time
-            # PDR
+            # RTT
+            pit_entry = PIT[original_name]
+            rtt = time.time() - pit_entry["time"]
+            METRICS["ave_RTT"] = (METRICS["ave_RTT"] + rtt) / 2
+            log("INFO", f"RTT for '{original_name}': {rtt:.2f}s, Average RTT: {METRICS['ave_RTT']:.2f}s")
+
+            # Throughput
+            if len(PIT) > 0:
+                data_bytes = METRICS["total_data_bytes_received"]
+                METRICS["throughput"] = data_bytes / (time.time() - METRICS["Test_Start_Time"])
+                log("INFO", f"Throughput: {METRICS['throughput']:.2f} bytes/sec")
 
             PIT.pop(original_name)
             log("INFO", f"Removed PIT entry for '{original_name}' after processing.")
