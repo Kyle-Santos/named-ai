@@ -45,6 +45,13 @@ def load_node_config(config_path: str, node_name: str):
     for func_name in node_config.get("functions", []):
         if func_name == "detect":
             functions.load_mtcnn()
+
+        if func_name == "recognize":
+            functions.load_facebank()
+
+        if func_name == "insightface_embedding":
+            functions.load_insightface()
+            
         NN.FUNCTIONS_TABLE[func_name] = functions.get_function(func_name)
 
     print(NN.FUNCTIONS_TABLE)

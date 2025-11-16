@@ -29,8 +29,8 @@
             "functions": ["orchestrate", "recognize"],
             "node_functions_mapping": {
                 "/dlsu/goks": ["detect", "resize"],
-                "/dlsu/andrew": ["grayscale", "resize"],
-                "/dlsu/velasco": ["embedding", "normalize"]
+                "/dlsu/andrew": ["mfn_embedding", "grayscale", "resize"],
+                "/dlsu/velasco": ["insightface_embedding", "openface_embedding", "normalize"]
             }
         },
 
@@ -65,7 +65,7 @@
                 "/dlsu/velasco": { "face": "face2", "port": 9028 }
             },
             "storage": "nfn_nodes/andrew/",
-            "functions": ["grayscale", "resize"]
+            "functions": ["mfn_embedding", "grayscale", "resize"]
         },
 
         {
@@ -81,7 +81,7 @@
                 "/dlsu/andrew": { "face": "face2", "port": 9023 }
             },
             "storage": "nfn_nodes/velasco/",
-            "functions": ["embedding", "normalize"]
+            "functions": ["insightface_embedding", "openface_embedding", "normalize"]
         },
 
         {

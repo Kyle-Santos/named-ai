@@ -7,8 +7,23 @@ from mtcnn.mtcnn import MTCNN
 import numpy as np
 from PIL import Image
 from io import BytesIO
+
+# for INSIGHTFACE
+import cv2
+import torch
+import json
+from insightface.app import FaceAnalysis
   
-TARGET_SIZE = (112, 112)  # Width x Height - Standard size for MobileFaceNet
+# TARGET_SIZE = (112, 112)  # Width x Height - Standard size for MobileFaceNet
+TARGET_SIZE = (640, 640)  # Width x Height - Standard size for INSIGHT FACE
+
+CHOSEN_MODEL = None
+
+FACEBANKS = {
+    "insightface": None,
+    "facenet": None,
+    "mobilefacenet": None,
+}
 
 # create a function that will allow functions.get_function(func_name)
 def get_function(func_name: str):
@@ -19,6 +34,8 @@ def get_function(func_name: str):
         "grayscale": grayscale,
         "orchestrate": orchestrate,
         "normalize": normalize,
+        "insightface_embedding": insightface_embedding,
+        "recognize": recognize,
     }
     return functions_map.get(func_name, None)
 
@@ -174,12 +191,14 @@ def normalize(image_bytes: bytes) -> bytes:
 
 def orchestrate(name: str, model, PIT, functions_mapping) -> str:
     """Build an NFN Interest string for the requested recognition pipeline."""
+    global CHOSEN_MODEL
     model = (model or "").lower()
+    CHOSEN_MODEL = model
 
     model_pipelines = {
-        "insightface": ["detect", "resize", "normalize"],
-        "openface": ["detect", "resize"],
-        "mobilefacenet": ["detect", "grayscale", "resize", "normalize"],
+        "insightface": ["resize", "normalize", "insightface_embedding"],
+        "openface": ["detect", "resize", "openface_embedding"],
+        "mobilefacenet": ["detect", "grayscale", "resize", "normalize", "mfn_embedding"],
     }
 
     # order of nearest to camera
@@ -248,6 +267,124 @@ def _build_segment_expression(node, funcs, inner_expr):
     return f"{node}/{segment_expr}"
 
 
+
+# FACEBANK MANAGEMENT
+def load_facebank():
+    facebanks = {
+        "insightface": "facebanks\\facebank_insightface.pt",
+        "facenet": None,
+        "mobilefacenet": None,
+    }
+
+    for model, path in facebanks.items():
+        if path is None or not os.path.exists(path):
+            print(f"[ERROR] {model.upper()} Facebank not found at {path}.")
+            continue
+        data = torch.load(path)
+        FACEBANKS[model] = {
+            "names": data["names"],
+            "embeddings": data["embeddings"]
+        }
+        print(f"[INFO] Loaded facebank with {len(FACEBANKS[model]['names'])} identities.")
+
+# recognize
+def recognize(data_bytes: bytes):
+    """
+    Args:
+        embeddings: numpy binary
+    Returns:
+        bytes: JSON result with label and confidence
+    """
+    global CHOSEN_MODEL
+    k = 3  # top-k  
+    threshold = 0.65  # similarity threshold
+    facebank_embeddings = FACEBANKS[CHOSEN_MODEL.lower()]["embeddings"] 
+    facebank_names = FACEBANKS[CHOSEN_MODEL.lower()]["names"]
+
+    try:
+        # Deserialize embedding from bytes
+        try:
+            # Try JSON first (Option 1)
+            embedding_dict = json.loads(data_bytes.decode('utf-8'))
+            if "error" in embedding_dict:
+                return json.dumps({"label": "Error", "confidence": 0.0, "error": embedding_dict["error"]}).encode('utf-8')
+            embedding = np.array(embedding_dict["embedding"])
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            # Try numpy binary format (Option 2)
+            buf = BytesIO(data_bytes)
+            embedding = np.load(buf)
+        
+        if embedding is None or len(embedding) == 0:
+            return json.dumps({"label": "No embedding", "confidence": 0.0}).encode('utf-8')
+
+        # Normalize embedding
+        embedding = embedding / np.linalg.norm(embedding)
+
+        if isinstance(facebank_embeddings, torch.Tensor):
+            facebank_embeddings = facebank_embeddings.cpu().numpy()
+
+        facebank_embeddings = facebank_embeddings / np.linalg.norm(facebank_embeddings, axis=1, keepdims=True)
+
+        sims = np.dot(facebank_embeddings, embedding)
+        topk_idxs = np.argsort(sims)[-k:][::-1]
+        topk_labels = [facebank_names[i] for i in topk_idxs]
+        topk_sims = sims[topk_idxs]
+
+        from collections import Counter
+        best_label = Counter(topk_labels).most_common(1)[0][0]
+        confidence = float(np.mean([s for s, l in zip(topk_sims, topk_labels) if l == best_label]))
+
+        if confidence < threshold:
+            best_label = "Unknown"
+
+        result = {"label": best_label, "confidence": confidence}
+        return json.dumps(result).encode('utf-8')
+    except Exception as e:
+        print(f"[ERROR] Recognition failed: {e}")
+        return np.array([])
+
+
+# MODELS FUNCTIONS
+insight_app = None
+
+def load_insightface():
+    global insight_app  
+    # ArcFace Model Initialization
+    insight_app = FaceAnalysis(providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+    insight_app.prepare(ctx_id=0, det_size=(640, 640))
+
+def insightface_embedding(image_bytes: bytes) -> bytes:
+    """
+    Args:
+        image_bytes (bytes): input image data
+    Returns:
+        np.ndarray: normalized 512D embedding, or None if failed
+    """
+    try:
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            print("[WARN] Failed to decode resized image.")
+            return b''
+
+    
+        # --- Get ArcFace embedding ---
+        faces = insight_app.get(img)
+        if len(faces) == 0:
+            print("[WARN] No face detected in resized image.")
+            return b''
+
+        emb = np.array(faces[0]['embedding'])
+        emb = emb / np.linalg.norm(emb)
+
+        # Serialize as bytes using numpy
+        buf = BytesIO()
+        np.save(buf, emb)
+
+        return buf.getvalue()
+    except Exception as e:
+        print(f"[ERROR] insightface_embedding: {e}")
+        return b''
 
 
 #  testing

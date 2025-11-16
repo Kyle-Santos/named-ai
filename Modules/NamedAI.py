@@ -384,18 +384,20 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     if name.startswith(NODE_NAME):
         # /dlsu/goks/detect() -> detect()
         requested_name = name[len(NODE_NAME)+1:]
-        
+        print(requested_name)
         # NFN case
-        if re.search(r"^[a-zA-Z]+\(.*\)", requested_name):
+        if re.search(r"^[a-zA-Z_]+\(.*\)", requested_name):
             # the NFN is for this node
             base_name, funcs = parse_nfn_expression(requested_name)
+            log("INFO", f"Parsed NFN Interest: base_name='{base_name}', funcs={funcs}")
 
             if "recognize" in funcs:
+                model, recognize = funcs # ['openface', 'recognize']
                 log("INFO", f"Received NFN Interest for recognition pipeline: '{name}'")
                 func = FUNCTIONS_TABLE["orchestrate"]
-                interest_expr = func(base_name, "openface", PIT, NODE_FUNCTIONS_MAPPING)
+                interest_expr = func(base_name, model, PIT, NODE_FUNCTIONS_MAPPING)
                 log("INFO", f"Orchestrated Interest Expression: '{interest_expr}'")
-                store_interest(name, interface, addr, funcs, interest_expr)
+                store_interest(name, interface, addr, [recognize], interest_expr)
                 base_name = interest_expr
             else:
                 # Store NFN interest in PIT
@@ -478,6 +480,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
             update_metrics("failed_packets")
         return  
 
+
 def process_data(packet, raw_packet, sock, SEND_QUEUE):
     """Process Data Packet"""
     name = packet["name"]
@@ -558,13 +561,13 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             pit_entry = PIT[original_name]
             rtt = time.time() - pit_entry["time"]
             METRICS["ave_RTT"] = (METRICS["ave_RTT"] + rtt) / 2
-            log("INFO", f"RTT for '{original_name}': {rtt:.2f}s, Average RTT: {METRICS['ave_RTT']:.2f}s")
+            log("INFO", f"RTT for '{original_name}': {rtt:.4f}s, Average RTT: {METRICS['ave_RTT']:.4f}s")
 
             # Throughput
             if len(PIT) > 0:
                 data_bytes = METRICS["total_data_bytes_received"]
-                METRICS["throughput"] = data_bytes / (time.time() - METRICS["Test_Start_Time"])
-                log("INFO", f"Throughput: {METRICS['throughput']:.2f} bytes/sec")
+                METRICS["throughput"] = data_bytes / (time.time() - METRICS["test_start_time"])
+                log("INFO", f"Throughput: {METRICS['throughput']:.4f} bytes/sec")
 
             PIT.pop(original_name)
             log("INFO", f"Removed PIT entry for '{original_name}' after processing.")
@@ -722,6 +725,7 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
                 response
             ))
     
+    update_metrics("data_packets_sent")
     log("INFO", f"Processed NFN '{name}' and sent to {pit_entry['interface']}")
 
     cleanup_flags["delete_pit"] = True
