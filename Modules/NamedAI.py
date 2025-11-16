@@ -563,7 +563,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             # Throughput
             if len(PIT) > 0:
                 data_bytes = METRICS["total_data_bytes_received"]
-                METRICS["throughput"] = data_bytes / (time.time() - METRICS["Test_Start_Time"])
+                METRICS["throughput"] = data_bytes / (time.time() - METRICS["test_start_time"])
                 log("INFO", f"Throughput: {METRICS['throughput']:.2f} bytes/sec")
 
             PIT.pop(original_name)

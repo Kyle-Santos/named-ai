@@ -428,7 +428,7 @@ if GUI_AVAILABLE:
             m_layout.setContentsMargins(10, 10, 10, 10)
             m_layout.setSpacing(8)
 
-            metrics_title = QLabel("METRICS")
+            metrics_title = QLabel("STATS")
             metrics_title.setStyleSheet(f"color:{self.WARN}; font-weight:700; font-size:12pt;")
             m_layout.addWidget(metrics_title)
 
@@ -503,7 +503,7 @@ if GUI_AVAILABLE:
             bottom = QHBoxLayout()
             bottom.setSpacing(8)
 
-            for label in ["show pit", "show cs", "show fib", "clear logs"]:
+            for label in ["show pit", "show cs", "show fib", "show metrics", "clear logs"]:
                 b = QPushButton(label)
                 b.clicked.connect(lambda checked=False, t=label: self.quick_command(t))
                 bottom.addWidget(b)
@@ -551,13 +551,16 @@ if GUI_AVAILABLE:
 
         def set_table_headers(self, mode: str):
             if mode == "pit":
-                self.table.setColumnCount(3) 
+                self.table.setColumnCount(3)
                 headers = ["NAME", "FACE", "TIME"]
             elif mode == "cs":
                 self.table.setColumnCount(2)
                 headers = ["NAME", "CACHED TIME"]
+            elif mode == "metrics":
+                self.table.setColumnCount(2)
+                headers = ["METRIC", "VALUE"]
             else:
-                self.table.setColumnCount(3) 
+                self.table.setColumnCount(3)
                 headers = ["NAME", "VALUE1", "VALUE2"]
             self.table.setHorizontalHeaderLabels(headers)
 
@@ -612,6 +615,11 @@ if GUI_AVAILABLE:
                         self.set_table_headers(what)
                         self.refresh_stats()
                         self.append_log("SUCCESS", f"Switched table to {what.upper()}")
+                    elif what == "metrics":
+                        self.current_table = "metrics"
+                        self.set_table_headers("metrics")
+                        self.refresh_stats()
+                        self.append_log("SUCCESS", f"Switched table to METRICS")
                     else:
                         self.show_structure(what)
                     return
@@ -708,10 +716,14 @@ if GUI_AVAILABLE:
                                 entries.append((prefix, faces_str, str(count)))
                             else:
                                 entries.append((prefix, str(faces), "1"))
+                elif self.current_table == "metrics":
+                    for key in ["ave_RTT", "PDR", "latency", "throughput"]:
+                        value = metrics.get(key, 0.0)
+                        entries.append((key, str(value)))
 
                 self.table.setRowCount(len(entries))
 
-                if self.current_table == "cs":
+                if self.current_table in ("cs", "metrics"):
                     for r, (col1, col2) in enumerate(entries):
                         self.table.setItem(r, 0, QTableWidgetItem(str(col1)))
                         self.table.setItem(r, 1, QTableWidgetItem(str(col2)))
@@ -739,12 +751,20 @@ if GUI_AVAILABLE:
             else:
                 self.append_log("WARN", f"Unknown structure: {which}")
                 return
-            
+
             self.append_log("SUCCESS", f"=== {which.upper()} ===")
             try:
                 self.append_log("INFO", repr(obj))
             except Exception:
                 self.append_log("INFO", str(obj))
+
+        def show_metrics(self):
+            metrics = getattr(NN, "METRICS", {})
+            self.append_log("SUCCESS", "=== METRICS ===")
+            # Display only the specified metrics
+            for key in ["ave_RTT", "PDR", "latency", "throughput"]:
+                value = metrics.get(key, 0.0)
+                self.append_log("INFO", f"{key}: {value}")
         
         def closeEvent(self, event):
             """Ensure backend threads and the entire program exit when GUI window is closed."""
