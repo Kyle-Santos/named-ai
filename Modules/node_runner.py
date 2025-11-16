@@ -287,32 +287,33 @@ if GUI_AVAILABLE:
             # Determine colors based on node type
             node_lower = self.node_name.lower()
             if "/cam" in node_lower:
-                self.SUCCESS = "#00FFFF"  # cyan
-                self.INFO = "#66FF99"     # mint
-                self.WARN = "#CCCCFF"     # lavender
-                self.ERROR = "#E6F1FF"     # white
-                self.ACCENT = "#00FFFF"   # cyan
-                self.ACCENT2 = "#66FF99"  # mint
-                self.ACCENT3 = "#CCCCFF"  # lavender
+                self.SUCCESS = "#00FFFF"  
+                self.INFO = "#66FF99"     
+                self.WARN = "#CCCCFF"     
+                self.ERROR = "#E6F1FF"     
+                self.ACCENT = "#00FFFF"   
+                self.ACCENT2 = "#66FF99"  
+                self.ACCENT3 = "#CCCCFF"  
                 bg_color = "#000000"
             elif node_lower.startswith("/dlsu"):
-                self.SUCCESS = "#00BFFF"  # electric blue
-                self.INFO = "#5CFFB5"     # neon mint
-                self.WARN = "#E0C3FC"     # pale lilac
-                self.ERROR = "#f87171"    # default error
-                self.ACCENT = "#00BFFF"   # electric blue
-                self.ACCENT2 = "#5CFFB5"  # neon mint
-                self.ACCENT3 = "#E0C3FC"  # pale lilac
+                self.SUCCESS = "#00BFFF"  
+                self.INFO = "#5CFFB5"     
+                self.WARN = "#E0C3FC"     
+                self.ERROR = "#f87171"    
+                self.ACCENT = "#00BFFF"   
+                self.ACCENT2 = "#5CFFB5"  
+                self.ACCENT3 = "#E0C3FC"  
                 bg_color = "#001F3F"
             else:
-                self.SUCCESS = "#34d399"
-                self.INFO = "#60a5fa"
-                self.WARN = "#fbbf24"
-                self.ERROR = "#f87171"
-                self.ACCENT = "#22d3ee"
-                self.ACCENT2 = "#60a5fa"
+                self.SUCCESS = "#34d399" 
+                self.INFO = "#60a5fa" 
+                self.WARN = "#fbbf24" 
+                self.ERROR = "#f87171" 
+                self.ACCENT = "#22d3ee" 
+                self.ACCENT2 = "#60a5fa" 
                 self.ACCENT3 = "#a78bfa"
-                bg_color = "#2b0071"
+
+                bg_color = "#1c0f2a"       
 
             self.setWindowTitle(f"NDN Node Monitor - {node_name}")
 
