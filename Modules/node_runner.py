@@ -294,32 +294,33 @@ if GUI_AVAILABLE:
             # Determine colors based on node type
             node_lower = self.node_name.lower()
             if "/cam" in node_lower:
-                self.SUCCESS = "#00FFFF"  # cyan
-                self.INFO = "#66FF99"     # mint
-                self.WARN = "#CCCCFF"     # lavender
-                self.ERROR = "#E6F1FF"     # white
-                self.ACCENT = "#00FFFF"   # cyan
-                self.ACCENT2 = "#66FF99"  # mint
-                self.ACCENT3 = "#CCCCFF"  # lavender
+                self.SUCCESS = "#00FFFF"  
+                self.INFO = "#66FF99"     
+                self.WARN = "#CCCCFF"     
+                self.ERROR = "#E6F1FF"     
+                self.ACCENT = "#00FFFF"   
+                self.ACCENT2 = "#66FF99"  
+                self.ACCENT3 = "#CCCCFF"  
                 bg_color = "#000000"
             elif node_lower.startswith("/dlsu"):
-                self.SUCCESS = "#00BFFF"  # electric blue
-                self.INFO = "#5CFFB5"     # neon mint
-                self.WARN = "#E0C3FC"     # pale lilac
-                self.ERROR = "#f87171"    # default error
-                self.ACCENT = "#00BFFF"   # electric blue
-                self.ACCENT2 = "#5CFFB5"  # neon mint
-                self.ACCENT3 = "#E0C3FC"  # pale lilac
+                self.SUCCESS = "#00BFFF"  
+                self.INFO = "#5CFFB5"     
+                self.WARN = "#E0C3FC"     
+                self.ERROR = "#f87171"    
+                self.ACCENT = "#00BFFF"   
+                self.ACCENT2 = "#5CFFB5"  
+                self.ACCENT3 = "#E0C3FC"  
                 bg_color = "#001F3F"
             else:
-                self.SUCCESS = "#34d399"
-                self.INFO = "#60a5fa"
-                self.WARN = "#fbbf24"
-                self.ERROR = "#f87171"
-                self.ACCENT = "#22d3ee"
-                self.ACCENT2 = "#60a5fa"
+                self.SUCCESS = "#34d399" 
+                self.INFO = "#ffffff" 
+                self.WARN = "#fbbf24" 
+                self.ERROR = "#f87171" 
+                self.ACCENT = "#22d3ee" 
+                self.ACCENT2 = "#60a5fa" 
                 self.ACCENT3 = "#a78bfa"
-                bg_color = "#2b0071"
+
+                bg_color = "#1c0f2a"       
 
             self.setWindowTitle(f"NDN Node Monitor - {node_name}")
 
@@ -418,7 +419,7 @@ if GUI_AVAILABLE:
             ds_counters = QVBoxLayout()
             ds_counters.setSpacing(5)
 
-            # Only PIT and CS
+            # Data Structures: PIT, CS
             self.pit_box = self._make_counter("pit", "PIT", self.ACCENT)
             self.cs_box = self._make_counter("cs", "CS", self.ACCENT3)
 
@@ -435,7 +436,7 @@ if GUI_AVAILABLE:
             m_layout.setContentsMargins(10, 10, 10, 10)
             m_layout.setSpacing(8)
 
-            metrics_title = QLabel("METRICS")
+            metrics_title = QLabel("STATS")
             metrics_title.setStyleSheet(f"color:{self.WARN}; font-weight:700; font-size:12pt;")
             m_layout.addWidget(metrics_title)
 
@@ -490,7 +491,7 @@ if GUI_AVAILABLE:
             rightlay.addLayout(stats_row)
 
             # =============================
-            # TABLE (PIT / CS)
+            # TABLE (PIT / CS / FIB)
             # =============================
             self.table = QTableWidget(0, 3)
             self.set_table_headers("pit")
@@ -510,7 +511,7 @@ if GUI_AVAILABLE:
             bottom = QHBoxLayout()
             bottom.setSpacing(8)
 
-            for label in ["show pit", "show cs", "clear logs"]:
+            for label in ["show pit", "show cs", "show fib", "show metrics", "clear logs"]:
                 b = QPushButton(label)
                 b.clicked.connect(lambda checked=False, t=label: self.quick_command(t))
                 bottom.addWidget(b)
@@ -558,13 +559,16 @@ if GUI_AVAILABLE:
 
         def set_table_headers(self, mode: str):
             if mode == "pit":
-                self.table.setColumnCount(3) 
+                self.table.setColumnCount(3)
                 headers = ["NAME", "FACE", "TIME"]
             elif mode == "cs":
                 self.table.setColumnCount(2)
                 headers = ["NAME", "CACHED TIME"]
+            elif mode == "metrics":
+                self.table.setColumnCount(2)
+                headers = ["METRIC", "VALUE"]
             else:
-                self.table.setColumnCount(3) 
+                self.table.setColumnCount(3)
                 headers = ["NAME", "VALUE1", "VALUE2"]
             self.table.setHorizontalHeaderLabels(headers)
 
@@ -614,11 +618,16 @@ if GUI_AVAILABLE:
                 
                 if raw.lower().startswith("show "):
                     what = raw.split(" ", 1)[1].strip().lower()
-                    if what in ("pit", "cs"):
+                    if what in ("pit", "cs", "fib"):
                         self.current_table = what
                         self.set_table_headers(what)
                         self.refresh_stats()
                         self.append_log("SUCCESS", f"Switched table to {what.upper()}")
+                    elif what == "metrics":
+                        self.current_table = "metrics"
+                        self.set_table_headers("metrics")
+                        self.refresh_stats()
+                        self.append_log("SUCCESS", f"Switched table to METRICS")
                     else:
                         self.show_structure(what)
                     return
@@ -706,10 +715,23 @@ if GUI_AVAILABLE:
                             face = entry.get("interface", "")
                             time_val = entry.get("time", "")
                             entries.append((name, face, time.strftime('%H:%M:%S', time.localtime(time_val))))
+                elif self.current_table == "fib":
+                    if isinstance(fib, dict):
+                        for prefix, faces in fib.items():
+                            if isinstance(faces, list):
+                                faces_str = ", ".join(str(f) for f in faces)
+                                count = len(faces)
+                                entries.append((prefix, faces_str, str(count)))
+                            else:
+                                entries.append((prefix, str(faces), "1"))
+                elif self.current_table == "metrics":
+                    for key in ["ave_RTT", "PDR", "latency", "throughput"]:
+                        value = metrics.get(key, 0.0)
+                        entries.append((key, str(value)))
 
                 self.table.setRowCount(len(entries))
 
-                if self.current_table == "cs":
+                if self.current_table in ("cs", "metrics"):
                     for r, (col1, col2) in enumerate(entries):
                         self.table.setItem(r, 0, QTableWidgetItem(str(col1)))
                         self.table.setItem(r, 1, QTableWidgetItem(str(col2)))
@@ -737,12 +759,20 @@ if GUI_AVAILABLE:
             else:
                 self.append_log("WARN", f"Unknown structure: {which}")
                 return
-            
+
             self.append_log("SUCCESS", f"=== {which.upper()} ===")
             try:
                 self.append_log("INFO", repr(obj))
             except Exception:
                 self.append_log("INFO", str(obj))
+
+        def show_metrics(self):
+            metrics = getattr(NN, "METRICS", {})
+            self.append_log("SUCCESS", "=== METRICS ===")
+            # Display only the specified metrics
+            for key in ["ave_RTT", "PDR", "latency", "throughput"]:
+                value = metrics.get(key, 0.0)
+                self.append_log("INFO", f"{key}: {value}")
         
         def closeEvent(self, event):
             """Ensure backend threads and the entire program exit when GUI window is closed."""
