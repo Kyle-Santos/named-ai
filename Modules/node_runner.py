@@ -306,7 +306,7 @@ if GUI_AVAILABLE:
                 bg_color = "#001F3F"
             else:
                 self.SUCCESS = "#34d399" 
-                self.INFO = "#60a5fa" 
+                self.INFO = "#ffffff" 
                 self.WARN = "#fbbf24" 
                 self.ERROR = "#f87171" 
                 self.ACCENT = "#22d3ee" 
