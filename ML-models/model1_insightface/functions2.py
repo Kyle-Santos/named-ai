@@ -2,6 +2,7 @@ import os
 # Suppress TensorFlow info/warning logs
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # 0=all, 1=info, 2=warning, 3=error
 import sys
+
 import cv2
 import torch
 import json
@@ -176,7 +177,6 @@ def normalize(image_bytes: bytes) -> bytes:
         print(f"[ERROR] Normalization failed: {e}")
         return image_bytes
     
-
 # ArcFace Model Initialization
 app = FaceAnalysis(providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
 app.prepare(ctx_id=0, det_size=(640, 640))
@@ -204,8 +204,8 @@ def extract_arcface_embedding(image_bytes):
     try:
         # detected_bytes = detect(image_bytes)
         normalized_bytes = normalize(image_bytes)
-        grayscale_bytes = grayscale(normalized_bytes)
-        resized_bytes = resize(grayscale_bytes)
+        # grayscale_bytes = grayscale(normalized_bytes)
+        resized_bytes = resize(normalized_bytes)
         if resized_bytes is None:
             print("[WARN] Resize preprocessing failed.")
             return None
@@ -265,7 +265,7 @@ if __name__ == "__main__":
     # load_mtcnn()
     names, embeddings = load_facebank()
 
-    with open("../test_images/Andy Samberg_87.jpg", "rb") as f:
+    with open("../test_images/dlsu_goks_cam_capture7.jpg.jpg", "rb") as f:
         img_bytes = f.read()
 
     result_bytes = resized_recog(img_bytes, names, embeddings)
