@@ -128,8 +128,9 @@ def parse_packet(packet_bytes):
     if pkt_type == packetStruct.PACKET_TYPE_INTEREST:
         name_len = struct.unpack(packetStruct.NAME_LENGTH_FORMAT, core[1:2])[0]
         name = core[2:2+name_len].decode()
-
-        return {"type": "interest", "name": name, "valid": valid}, None
+        parsed = {"type": "interest", "name": name, "valid": valid}
+        log("SUCCESS", f"Parsed interest packet '{name}'")
+        return parsed, None
 
     elif pkt_type == packetStruct.PACKET_TYPE_DATA:
         name_len = struct.unpack(packetStruct.NAME_LENGTH_FORMAT, core[1:2])[0]
@@ -146,14 +147,20 @@ def parse_packet(packet_bytes):
             frag_num, frag_total = int(match.group(1)), int(match.group(2))
             name = name[:match.start()]  # strip [x:y]
 
-        return {
+        parsed = {
             "type": "data",
             "name": name,
             "data": data_field,
             "frag_num": frag_num,
             "frag_total": frag_total,
             "valid": valid
-        }, None
+        }
+        if frag_total:
+            frag_note = f"fragment {frag_num}/{frag_total}"
+        else:
+            frag_note = "unfragmented payload"
+        log("SUCCESS", f"Parsed data packet '{name}' ({frag_note})")
+        return parsed, None
 
 
     return None, "Unknown packet type"
@@ -249,6 +256,8 @@ def store_interest(name, face, addr, funcs=None, waiting_for=None):
 
             # Update timestamp to the most recent Interest
             PIT[name]["time"] = current_time
+            face_label = face if face is not None else "local"
+            log("SUCCESS", f"Aggregated Interest '{name}' onto PIT via face '{face_label}'")
         else:
             PIT[name] = { 
                 "interface": {face}, 
@@ -256,6 +265,8 @@ def store_interest(name, face, addr, funcs=None, waiting_for=None):
                 "funcs": funcs,
                 "waiting_for": waiting_for,
             }
+            face_label = face if face is not None else "local"
+            log("SUCCESS", f"Stored Interest '{name}' in PIT via face '{face_label}'")
 
 def store_data(name, path):
     """Store data in the Content Store (CS)."""
@@ -263,17 +274,23 @@ def store_data(name, path):
         # Evict the oldest entry
         oldest_name = min(CS.keys(), key=lambda k: CS[k]["timestamp"])
         CS.pop(oldest_name)
+        log("SUCCESS", f"Evicted '{oldest_name}' to maintain CS capacity")
 
     CS[name] = {"path": path, "timestamp": time.time()}
+    log("SUCCESS", f"Cached '{name}' into CS (size: {len(CS)})")
 
 def lookup_content(name):
     """Look up content in the Content Store (CS)."""
-    return CS.get(name, None)
+    entry = CS.get(name, None)
+    if entry is not None:
+        log("SUCCESS", f"CS hit for '{name}'")
+    return entry
 
 def update_CS_timestamp(name):
     """Update the timestamp of a CS entry to mark it as recently used."""
     if name in CS:
         CS[name]["timestamp"] = time.time()
+        log("SUCCESS", f"Updated CS entry for '{name}'")
 
 def initialize_content_store(storage_path):
     """Load existing content from storage into the Content Store (CS)."""
@@ -519,9 +536,11 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                 if frag_total:
                     if name not in FRAG_BUFFER:
                         FRAG_BUFFER[name] = {"frags": {}, "expected": frag_total}
+                        log("SUCCESS", f"Initialized fragment buffer for '{name}' expecting {frag_total} parts")
 
                     if frag_num not in FRAG_BUFFER[name]["frags"]:
                         FRAG_BUFFER[name]["frags"][frag_num] = data
+                        log("SUCCESS", f"Buffered fragment {frag_num}/{frag_total} for '{name}'")
 
                     # Forward the fragment
                     SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
@@ -637,8 +656,10 @@ def handle_fragmented_local_processing(name, waiting_for_name, data, frag_num,
     # Initialize fragment buffer
     if name not in FRAG_BUFFER:
         FRAG_BUFFER[name] = {"frags": {}, "expected": frag_total}
+        log("SUCCESS", f"Initialized fragment buffer for '{name}' expecting {frag_total} parts")
 
     FRAG_BUFFER[name]["frags"][frag_num] = data
+    log("SUCCESS", f"Buffered fragment {frag_num}/{frag_total} for '{name}'")
 
     # Check if all fragments received
     if len(FRAG_BUFFER[name]["frags"]) == frag_total:
@@ -662,7 +683,7 @@ def handle_fragmented_local_processing(name, waiting_for_name, data, frag_num,
 def reassemble_fragments(name, frag_total):
     """Reassemble fragments for a given name."""
     full_data = b"".join(FRAG_BUFFER[name]["frags"][i] for i in range(1, frag_total+1))
-    log("INFO", f"Reassembled data for '{name}'")
+    log("SUCCESS", f"Reassembled data for '{name}' from {frag_total} fragments")
     return full_data
 
 
@@ -682,7 +703,7 @@ def save_data_to_file(name, data_bytes):
 
     with open(filename, "wb") as f:
         f.write(data_bytes)
-    log("INFO", f"Data written to {filename}")
+    log("SUCCESS", f"Data written to {filename}")
 
 
 def process_name_request(name) -> bytes:
@@ -780,7 +801,9 @@ def build_interest_packet(name):
     header += struct.pack(packetStruct.NAME_LENGTH_FORMAT, len(name_bytes))
     core = header + name_bytes
     checksum = compute_checksum(core).to_bytes(1, 'big')
-    return packetStruct.PREAMBLE + core + checksum + packetStruct.POSTAMBLE
+    packet = packetStruct.PREAMBLE + core + checksum + packetStruct.POSTAMBLE
+    log("SUCCESS", f"Built interest packet for '{name}'")
+    return packet
 
 
 def build_data_packet(name, data):
@@ -809,6 +832,7 @@ def build_data_packet(name, data):
 
         packet = packetStruct.PREAMBLE + core + checksum + packetStruct.POSTAMBLE
         packets.append(packet)
+        log("SUCCESS", f"Built data packet for '{name}' fragment {idx}/{total_frags}")
 
     return packets
 

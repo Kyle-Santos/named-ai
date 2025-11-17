@@ -13,3 +13,5 @@ ML-models/model1_insightface/onnxruntime
 data-preprocessing/facebank/*
 data-preprocessing/test_images/*
 Modules/*.jpg
+
+.venv
