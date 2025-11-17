@@ -10,3 +10,8 @@ data-preprocessing/Face_Dataset
 
 ML-models/model1_insightface/insightface
 ML-models/model1_insightface/onnxruntime
+data-preprocessing/facebank/*
+data-preprocessing/test_images/*
+Modules/*.jpg
+
+.venv
