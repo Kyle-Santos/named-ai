@@ -257,10 +257,7 @@ def pit_cleanup_worker(gui_callback=None):
             if gui_callback:
                 gui_callback("ERROR", msg)
 
-
-# =============================================================================
 # GUI INTEGRATION
-# =============================================================================
 
 if GUI_AVAILABLE:
     # GUI Color Scheme
@@ -284,7 +281,7 @@ if GUI_AVAILABLE:
 
     class NodeMonitor(QWidget):
         log_signal = pyqtSignal(str, str)  # level, line
-        
+
         def __init__(self, start_mode: str, node_name: str):
             super().__init__()
             self.start_mode = start_mode
@@ -313,14 +310,16 @@ if GUI_AVAILABLE:
                 bg_color = "#001F3F"
             else:
                 self.SUCCESS = "#34d399" 
-                self.INFO = "#ffffff" 
+                self.INFO = "#ffb246" 
                 self.WARN = "#fbbf24" 
                 self.ERROR = "#f87171" 
                 self.ACCENT = "#22d3ee" 
                 self.ACCENT2 = "#60a5fa" 
                 self.ACCENT3 = "#a78bfa"
 
-                bg_color = "#1c0f2a"       
+                bg_color = "#1c0f2a"
+
+            self.TIME_COLOR = "#ffffff"
 
             self.setWindowTitle(f"NDN Node Monitor - {node_name}")
 
@@ -401,7 +400,7 @@ if GUI_AVAILABLE:
             rightlay.setSpacing(8)
 
             # =============================
-            # TOP ROW: DATA STRUCTURES | METRICS
+            # TOP ROW: DATA STRUCTURES | STATS
             # =============================
             stats_row = QHBoxLayout()
             stats_row.setSpacing(12)
@@ -473,7 +472,7 @@ if GUI_AVAILABLE:
                 "data_packets_received", "Data Received", self.ERROR
             )
             self.total_data_bytes_received_box = self._make_counter(
-                "total_data_bytes_received", "Total KBs Rec", self.ACCENT
+                "total_data_bytes_received", "Total KBs Received", self.ACCENT
             )
 
             right_vbox.addWidget(self.interests_received_box)
@@ -525,7 +524,7 @@ if GUI_AVAILABLE:
             #     bottom.addWidget(self.cmd, 3)
             bottom.addWidget(self.cmd, 3)
             
-            self.exec_btn = QPushButton("EXECUTE")
+            self.exec_btn = QPushButton("SEND")
             self.exec_btn.clicked.connect(self.handle_command)
             if self.start_mode == "client":
                 bottom.addWidget(self.exec_btn)
@@ -563,7 +562,7 @@ if GUI_AVAILABLE:
                 headers = ["NAME", "FACE", "TIME"]
             elif mode == "cs":
                 self.table.setColumnCount(2)
-                headers = ["NAME", "CACHED TIME"]
+                headers = ["NAME", "ACCESS TIME"]
             elif mode == "metrics":
                 self.table.setColumnCount(2)
                 headers = ["METRIC", "VALUE"]
@@ -575,7 +574,7 @@ if GUI_AVAILABLE:
         def append_log(self, level: str, line: str):
             color = {"SUCCESS": self.SUCCESS, "INFO": self.INFO, "WARN": self.WARN, "ERROR": self.ERROR}.get(level, self.INFO)
             ts = datetime.now().strftime("%I:%M:%S %p")
-            html = f'<span style="color:{self.INFO}">[{ts}]</span> <span style="color:{color}">[{level}]</span> {line}'
+            html = f'<span style="color:{self.TIME_COLOR}">[{ts}]</span> <span style="color:{color}">[{level}]</span> {line}'
             self.logs.append(html)
             self.logs.moveCursor(QTextCursor.End)
 
@@ -618,11 +617,13 @@ if GUI_AVAILABLE:
                 
                 if raw.lower().startswith("show "):
                     what = raw.split(" ", 1)[1].strip().lower()
-                    if what in ("pit", "cs", "fib"):
+                    if what in ("pit", "cs"):
                         self.current_table = what
                         self.set_table_headers(what)
                         self.refresh_stats()
                         self.append_log("SUCCESS", f"Switched table to {what.upper()}")
+                    elif what == "fib":
+                        self.show_structure("fib")
                     elif what == "metrics":
                         self.current_table = "metrics"
                         self.set_table_headers("metrics")
@@ -669,7 +670,7 @@ if GUI_AVAILABLE:
             fib = getattr(NN, "FIB", {})
             cs = getattr(NN, "CS", {})
             faces = getattr(NN, "FACES", None)
-            metrics = getattr(NN, "METRICS", {})
+            metrics = NN.get_metrics()
 
             self._set_counter("pit", self._safe_len(pit))
             self._set_counter("fib", self._safe_len(fib))
@@ -689,8 +690,6 @@ if GUI_AVAILABLE:
 
             # Update METRICS counters
             for metric_name, value in metrics.items():
-                if metric_name == "total_data_bytes_received":
-                    value = round(value / 1024, 2)  # Convert bytes to kilobytes
                 self._set_counter(metric_name, value)
                 
             
@@ -725,9 +724,16 @@ if GUI_AVAILABLE:
                             else:
                                 entries.append((prefix, str(faces), "1"))
                 elif self.current_table == "metrics":
+                    names = {
+                        "ave_RTT": "Average RTT (ms)",
+                        "PDR": "Packet Delivery Ratio (%)",
+                        "latency": "Latency (ms)",
+                        "throughput": "Throughput (KB/s)"
+                    }
                     for key in ["ave_RTT", "PDR", "latency", "throughput"]:
+                        display_name = names.get(key, key)
                         value = metrics.get(key, 0.0)
-                        entries.append((key, str(value)))
+                        entries.append((display_name, f"{value:.2f}"))
 
                 self.table.setRowCount(len(entries))
 
@@ -751,7 +757,14 @@ if GUI_AVAILABLE:
             if which == "pit":
                 obj = getattr(NN, "PIT", {})
             elif which == "fib":
-                obj = getattr(NN, "FIB", {})
+                fib_raw = getattr(NN, "FIB", {})
+                # Exclude port mappings: display only the face name
+                obj = {}
+                for prefix, face_dict in fib_raw.items():
+                    if isinstance(face_dict, dict) and 'face' in face_dict:
+                        obj[prefix] = face_dict['face']
+                    else:
+                        obj[prefix] = face_dict
             elif which == "cs":
                 obj = getattr(NN, "CS", {})
             elif which in ("face", "faces"):

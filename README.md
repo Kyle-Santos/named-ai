@@ -25,7 +25,7 @@ send interest /dlsu/andrew/grayscale(/dlsu/goks/resize(detect(/dlsu/goks/cam/cap
 send interest /dlsu/velasco/normalize(/dlsu/andrew/grayscale(/dlsu/goks/resize(detect(/dlsu/goks/cam/capture1.jpg))))
 
 
-send interest /dlsu/recognize(insightface(/dlsu/goks/cam/capture7.jpg))
+send interest /dlsu/recognize(insightface(/dlsu/goks/cam/capture11.jpg))
 
 
 ## ML Pipeline
