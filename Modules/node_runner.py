@@ -690,6 +690,8 @@ if GUI_AVAILABLE:
 
             # Update METRICS counters
             for metric_name, value in metrics.items():
+                if metric_name == "total_data_bytes_received":
+                    value = round(value / 1024, 2)  # Convert to KB
                 self._set_counter(metric_name, value)
                 
             

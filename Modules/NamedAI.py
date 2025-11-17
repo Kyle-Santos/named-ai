@@ -265,8 +265,7 @@ def store_interest(name, face, addr, funcs=None, waiting_for=None):
                 "funcs": funcs,
                 "waiting_for": waiting_for,
             }
-            face_label = face if face is not None else "local"
-            log("SUCCESS", f"Stored Interest '{name}' in PIT via face '{face_label}'")
+            log("SUCCESS", f"Stored Interest '{name}' in PIT")
 
 def store_data(name, path):
     """Store data in the Content Store (CS)."""
