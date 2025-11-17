@@ -217,7 +217,7 @@ def get_metrics():
 ##################
 NODE_NAME = None
 STORAGE_PATH = ""
-INTEREST_LIFETIME = 20  # seconds
+INTEREST_LIFETIME = 30  # seconds
 
 INTERFACES = {}  # port -> face, sock, port 
 
@@ -492,9 +492,10 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
         update_metrics("data_packets_received")
         update_metrics("total_data_bytes_received", len(data))
 
+        log("INFO", f"PIT '{PIT}'")
         # Find the relevant PIT entry
         pit_entry, original_name, waiting_for_name = find_pit_entry(name)
-            
+        
         if pit_entry is None:
             log("WARN", f"No PIT entry for {name}, dropping")
             update_metrics("failed_packets")
@@ -577,10 +578,11 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
 
 def find_pit_entry(name):
     """Find PIT entry for the given name or waiting_for relationship"""
-    pit_entry = PIT[name]
+    log("INFO", f"Searching PIT for data '{name}'")
+    pit_entry = PIT[name] if name in PIT else None
     waiting_for_name = None
     original_name = name
-
+    log("INFO", f"PIT: {pit_entry}")
     # Direct match
     # if name in PIT:
     #     pit_entry = PIT[name]
@@ -666,8 +668,18 @@ def reassemble_fragments(name, frag_total):
 
 def save_data_to_file(name, data_bytes):
     """Save data bytes to a file and store in CS."""
-    filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_')) + ".jpg"
-    store_data(name, filename)
+    if "recognize" in name:
+        filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_')) + ".txt"
+    elif "embedding" in name:
+        filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_')) + ".npy"
+    else:
+        filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_')) + ".jpg"
+
+    if name not in CS:
+        store_data(name, filename)
+    else:
+        update_CS_timestamp(name)
+
     with open(filename, "wb") as f:
         f.write(data_bytes)
     log("INFO", f"Data written to {filename}")
@@ -707,7 +719,7 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
                        SEND_QUEUE, cleanup_flags):
     """Process Named Function Networking request"""
     # Save the original data
-    if lookup_content(waiting_for_name) is None:
+    if lookup_content(waiting_for_name) is None and waiting_for_name not in CS:
         save_data_to_file(waiting_for_name, full_data)
     cleanup_flags["delete_waiting_for"] = True
 
@@ -754,6 +766,7 @@ def apply_function_pipeline(name, data, pit_entry):
             # Continue with unprocessed data
 
     return processed_data
+
 
 
 ###################
