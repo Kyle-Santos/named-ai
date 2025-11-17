@@ -361,8 +361,6 @@ def get_PIT_entry(name):
 def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     """Process Interest: check CS or forward."""
     name = packet["name"]
-
-    # Count all received interests
     update_metrics("interests_received")
 
 
@@ -487,15 +485,15 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
     data = packet["data"]
     frag_num = packet.get("frag_num")
     frag_total = packet.get("frag_total")
-
     with PIT_LOCK:
         update_metrics("data_packets_received")
         update_metrics("total_data_bytes_received", len(data))
 
+
         log("INFO", f"PIT '{PIT}'")
         # Find the relevant PIT entry
         pit_entry, original_name, waiting_for_name = find_pit_entry(name)
-        
+        log("INFO", f"PIT match: original='{original_name}', waiting_for='{waiting_for_name}', entry={pit_entry}")
         if pit_entry is None:
             log("WARN", f"No PIT entry for {name}, dropping")
             update_metrics("failed_packets")
@@ -608,7 +606,7 @@ def should_process_locally(face, waiting_for_name):
 def handle_local_processing(name, waiting_for_name, data, frag_num, frag_total, 
                             pit_entry, SEND_QUEUE, cleanup_flags):
     """Handle local data processing"""
-    log("INFO", "Node requested the data - processing locally")
+    log("INFO", f"Node requested the data - processing locally")
 
     if frag_total:
         # Fragmented data
@@ -635,6 +633,7 @@ def handle_fragmented_local_processing(name, waiting_for_name, data, frag_num,
                                        frag_total, pit_entry, SEND_QUEUE, cleanup_flags):
     """Handle fragmented data for local processing"""
     # Initialize fragment buffer
+    log("INFO", f"Received fragment {frag_num}/{frag_total} for '{name}' during local processing")
     if name not in FRAG_BUFFER:
         FRAG_BUFFER[name] = {"frags": {}, "expected": frag_total}
 
@@ -643,6 +642,7 @@ def handle_fragmented_local_processing(name, waiting_for_name, data, frag_num,
     # Check if all fragments received
     if len(FRAG_BUFFER[name]["frags"]) == frag_total:
         full_data = reassemble_fragments(name, frag_total)
+        log("INFO", f"All fragments received for '{name}', invoking reassembly")
 
         # Save original data if this is an NFN request
         if waiting_for_name:
@@ -662,12 +662,14 @@ def handle_fragmented_local_processing(name, waiting_for_name, data, frag_num,
 def reassemble_fragments(name, frag_total):
     """Reassemble fragments for a given name."""
     full_data = b"".join(FRAG_BUFFER[name]["frags"][i] for i in range(1, frag_total+1))
-    log("INFO", f"Reassembled data for '{name}'")
+    log("INFO", f"Reassembling fragments for '{name}', total={frag_total}")
+    log("INFO", f"Fragment assembly complete for '{name}', final_size={len(full_data)} bytes")
     return full_data
 
 
 def save_data_to_file(name, data_bytes):
     """Save data bytes to a file and store in CS."""
+    log("INFO", f"Saving processed output for '{name}' to CS")
     if "recognize" in name:
         filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_')) + ".txt"
     elif "embedding" in name:
@@ -687,9 +689,10 @@ def save_data_to_file(name, data_bytes):
 
 def process_name_request(name) -> bytes:
     # Read file contents as raw bytes
+    log("INFO", f"Reading content from filesystem: {name}")
     with open(name, "rb") as f:
         file_bytes = f.read()
-
+    log("INFO", f"Read {len(file_bytes)} bytes from '{name}'")
     return file_bytes
 
 
@@ -712,12 +715,16 @@ def parse_nfn_expression(expr: str):
 
     func, arg = match.groups()
     base_name, funcs = parse_nfn_expression(arg)  # recurse inside
+    log("INFO", f"Parsing NFN expression: {expr}")
+    log("INFO", f"NFN parse result: base='{base_name}', funcs = {funcs}")
     return base_name, funcs + [func]
 
 
 def process_nfn_request(name, waiting_for_name, full_data, pit_entry, 
                        SEND_QUEUE, cleanup_flags):
     """Process Named Function Networking request"""
+    log("INFO", f"Starting NFN processing for '{name}', waiting_for = '{waiting_for_name}'")
+    log("INFO", f"Assembling NFN workflow: funcs={pit_entry.get('funcs', [])}")
     # Save the original data
     if lookup_content(waiting_for_name) is None and waiting_for_name not in CS:
         save_data_to_file(waiting_for_name, full_data)
@@ -725,7 +732,8 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
 
     # Apply functions in the pipeline
     processed_data = apply_function_pipeline(name, full_data, pit_entry)
-
+    log("INFO", f"NFN pipeline complete for '{name}', size={len(processed_data)} bytes")
+    log("INFO", f"Building final NFN Data packet for '{name}'")
     # Send processed results back
     response = build_data_packet(name, processed_data)
 
@@ -747,7 +755,8 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
 def apply_function_pipeline(name, data, pit_entry):
     """Apply all functions in the NFN pipeline"""
     processed_data = data
-
+    log("INFO", f"Initializing ML pipeline for '{name}', stages={pit_entry.get('funcs', [])}")
+    log("INFO", f"Initial payload size: {len(data)} bytes")
     for func_name in pit_entry.get("funcs", []):
         log("INFO", f"Applying function: {func_name}")
 
@@ -757,6 +766,8 @@ def apply_function_pipeline(name, data, pit_entry):
 
         try:
             func = FUNCTIONS_TABLE[func_name]
+            log("INFO", f"ML stage start: '{func_name}' on '{name}', "
+            f"input={len(processed_data)} bytes")
             processed_data = func(processed_data)
             log("INFO", f"Function '{func_name}' completed successfully")
         except Exception as e:
