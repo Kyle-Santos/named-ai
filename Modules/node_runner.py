@@ -473,7 +473,7 @@ if GUI_AVAILABLE:
                 "data_packets_received", "Data Received", self.ERROR
             )
             self.total_data_bytes_received_box = self._make_counter(
-                "total_data_bytes_received", "Total KBs Rec", self.ACCENT
+                "total_data_bytes_received", "Total KBs Received", self.ACCENT
             )
 
             right_vbox.addWidget(self.interests_received_box)
@@ -563,7 +563,7 @@ if GUI_AVAILABLE:
                 headers = ["NAME", "FACE", "TIME"]
             elif mode == "cs":
                 self.table.setColumnCount(2)
-                headers = ["NAME", "CACHED TIME"]
+                headers = ["NAME", "ACCESS TIME"]
             elif mode == "metrics":
                 self.table.setColumnCount(2)
                 headers = ["METRIC", "VALUE"]
@@ -669,7 +669,7 @@ if GUI_AVAILABLE:
             fib = getattr(NN, "FIB", {})
             cs = getattr(NN, "CS", {})
             faces = getattr(NN, "FACES", None)
-            metrics = getattr(NN, "METRICS", {})
+            metrics = NN.get_metrics()
 
             self._set_counter("pit", self._safe_len(pit))
             self._set_counter("fib", self._safe_len(fib))
@@ -689,8 +689,6 @@ if GUI_AVAILABLE:
 
             # Update METRICS counters
             for metric_name, value in metrics.items():
-                if metric_name == "total_data_bytes_received":
-                    value = round(value / 1024, 2)  # Convert bytes to kilobytes
                 self._set_counter(metric_name, value)
                 
             
@@ -725,9 +723,16 @@ if GUI_AVAILABLE:
                             else:
                                 entries.append((prefix, str(faces), "1"))
                 elif self.current_table == "metrics":
+                    names = {
+                        "ave_RTT": "Average RTT (ms)",
+                        "PDR": "Packet Delivery Ratio (%)",
+                        "latency": "Latency (ms)",
+                        "throughput": "Throughput (KB/s)"
+                    }
                     for key in ["ave_RTT", "PDR", "latency", "throughput"]:
+                        display_name = names.get(key, key)
                         value = metrics.get(key, 0.0)
-                        entries.append((key, str(value)))
+                        entries.append((display_name, f"{value:.2f}"))
 
                 self.table.setRowCount(len(entries))
 

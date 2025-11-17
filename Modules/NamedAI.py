@@ -174,7 +174,7 @@ METRICS = {
     "failed_packets": 0,
     "total_data_bytes_received": 0,
     
-    "ave_RTT": 0.0,
+    "ave_RTT": 0.0,  # in milliseconds
 
     "PDR": 0.0,
     
@@ -561,14 +561,16 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             # RTT
             pit_entry = PIT[original_name]
             rtt = time.time() - pit_entry["time"]
-            METRICS["ave_RTT"] = (METRICS["ave_RTT"] + rtt) / 2
-            log("INFO", f"RTT for '{original_name}': {rtt:.4f}s, Average RTT: {METRICS['ave_RTT']:.4f}s")
+            if METRICS["ave_RTT"] == 0.0:
+                METRICS["ave_RTT"] = rtt * 1000  # in ms
+            METRICS["ave_RTT"] = (METRICS["ave_RTT"] + rtt * 1000) / 2
+            log("INFO", f"RTT for '{original_name}': {rtt:.4f}s, Average RTT: {METRICS['ave_RTT']:.4f}ms")
 
             # Throughput
             if len(PIT) > 0:
-                data_bytes = METRICS["total_data_bytes_received"]
-                METRICS["throughput"] = data_bytes / (time.time() - METRICS["test_start_time"])
-                log("INFO", f"Throughput: {METRICS['throughput']:.4f} bytes/sec")
+                data_kbytes = METRICS["total_data_bytes_received"] / 1024  # in KB
+                METRICS["throughput"] = data_kbytes / (time.time() - METRICS["test_start_time"])
+                log("INFO", f"Throughput: {METRICS['throughput']:.4f} KB/sec")
 
             PIT.pop(original_name)
             log("INFO", f"Removed PIT entry for '{original_name}' after processing.")
