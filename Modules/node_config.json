@@ -89,6 +89,9 @@
             "interfaces": [
                 { "face": "face0", "port": 9031 }
             ],
+            "FIB": {
+                "/dlsu/goks": { "face": "face0", "port": 9019 }
+            },
             "storage": "goks_cam_node/captures/"
         }
     ]

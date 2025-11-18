@@ -565,7 +565,7 @@ if GUI_AVAILABLE:
                 headers = ["NAME", "ACCESS TIME"]
             elif mode == "fib":
                 self.table.setColumnCount(3)
-                headers = ["PREFIX", "FACES", "COUNT"]
+                headers = ["PREFIX", "FACE", "PORT"]
             elif mode == "metrics":
                 self.table.setColumnCount(2)
                 headers = ["METRIC", "VALUE"]
@@ -719,21 +719,14 @@ if GUI_AVAILABLE:
                             entries.append((name, face, time.strftime('%H:%M:%S', time.localtime(time_val))))
                 elif self.current_table == "fib":
                     if isinstance(fib, dict):
-                        for prefix, faces in fib.items():
-                            if isinstance(faces, list):
-                                faces_str = ", ".join(str(f) for f in faces)
-                                count = len(faces)
-                                entries.append((prefix, faces_str, str(count)))
-                            else:
-                                entries.append((prefix, str(faces), "1"))
+                        for prefix, value in fib.items():
+                            entries.append((prefix, value["face"], value["port"]))
                 elif self.current_table == "metrics":
                     names = {
                         "ave_RTT": "Average RTT (ms)",
                         "PDR": "Packet Delivery Ratio (%)",
-                        "latency": "Latency (ms)",
-                        "throughput": "Throughput (KB/s)"
                     }
-                    for key in ["ave_RTT", "PDR", "latency", "throughput"]:
+                    for key in ["ave_RTT", "PDR"]:
                         display_name = names.get(key, key)
                         value = metrics.get(key, 0.0)
                         entries.append((display_name, f"{value:.2f}"))

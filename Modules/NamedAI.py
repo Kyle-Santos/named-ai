@@ -180,6 +180,7 @@ METRICS = {
     "data_packets_sent": 0,
     "failed_packets": 0,
     "total_data_bytes_received": 0,
+    "total_data_overhead_bytes_received": 0,
     
     "ave_RTT": 0.0,  # in milliseconds
 
@@ -504,12 +505,12 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
     with PIT_LOCK:
         update_metrics("data_packets_received")
         update_metrics("total_data_bytes_received", len(data))
+        update_metrics("total_data_overhead_bytes_received", len(raw_packet))
 
 
-        log("INFO", f"PIT '{PIT}'")
         # Find the relevant PIT entry
         pit_entry, original_name, waiting_for_name = find_pit_entry(name)
-        log("INFO", f"PIT match: original='{original_name}', waiting_for='{waiting_for_name}', entry={pit_entry}")
+
         if pit_entry is None:
             log("WARN", f"No PIT entry for {name}, dropping")
             update_metrics("failed_packets")
@@ -582,11 +583,11 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             METRICS["ave_RTT"] = (METRICS["ave_RTT"] + rtt * 1000) / 2
             log("INFO", f"RTT for '{original_name}': {rtt:.4f}s, Average RTT: {METRICS['ave_RTT']:.4f}ms")
 
-            # Throughput
-            if len(PIT) > 0:
-                data_kbytes = METRICS["total_data_bytes_received"] / 1024  # in KB
-                METRICS["throughput"] = data_kbytes / (time.time() - METRICS["test_start_time"])
-                log("INFO", f"Throughput: {METRICS['throughput']:.4f} KB/sec")
+            # Goodput
+            data_kbytes = METRICS["total_data_bytes_received"] / 1024  # in KB
+            overhead_data_kbytes = METRICS["total_data_overhead_bytes_received"] / 1024 # in KB
+            log("INFO", f"Final Size of {original_name}: {data_kbytes:.2f} KB")
+            log("INFO", f"Final Size with Overhead: {overhead_data_kbytes:.2f} KB")
 
             PIT.pop(original_name)
             log("INFO", f"Removed PIT entry for '{original_name}' after processing.")
@@ -626,8 +627,6 @@ def should_process_locally(face, waiting_for_name):
 def handle_local_processing(name, waiting_for_name, data, frag_num, frag_total, 
                             pit_entry, SEND_QUEUE, cleanup_flags):
     """Handle local data processing"""
-    log("INFO", f"Node requested the data - processing locally")
-
     if frag_total:
         # Fragmented data
         return handle_fragmented_local_processing(
@@ -635,6 +634,8 @@ def handle_local_processing(name, waiting_for_name, data, frag_num, frag_total,
             pit_entry, SEND_QUEUE, cleanup_flags
         )
     else:
+        log("INFO", f"Node requested the data - processing locally")
+
         # Non-fragmented data
         log("INFO", f"Received non-fragmented data for {name}")
 
@@ -659,12 +660,13 @@ def handle_fragmented_local_processing(name, waiting_for_name, data, frag_num,
         log("SUCCESS", f"Initialized fragment buffer for '{name}' expecting {frag_total} parts")
 
     FRAG_BUFFER[name]["frags"][frag_num] = data
-    log("SUCCESS", f"Buffered fragment {frag_num}/{frag_total} for '{name}'")
+    # log("SUCCESS", f"Buffered fragment {frag_num}/{frag_total} for '{name}'")
 
     # Check if all fragments received
     if len(FRAG_BUFFER[name]["frags"]) == frag_total:
+        log("INFO", f"Node requested the data - processing locally")
+        log("INFO", f"All fragments received for '{name}', reassembling fragments (total={frag_total})")
         full_data = reassemble_fragments(name, frag_total)
-        log("INFO", f"All fragments received for '{name}', invoking reassembly")
 
         # Save original data if this is an NFN request
         if waiting_for_name:
@@ -684,7 +686,7 @@ def handle_fragmented_local_processing(name, waiting_for_name, data, frag_num,
 def reassemble_fragments(name, frag_total):
     """Reassemble fragments for a given name."""
     full_data = b"".join(FRAG_BUFFER[name]["frags"][i] for i in range(1, frag_total+1))
-    log("INFO", f"Reassembling fragments for '{name}', total={frag_total}")
+    # log("INFO", f"Reassembling fragments for '{name}', total={frag_total}")
     log("INFO", f"Fragment assembly complete for '{name}', final_size={len(full_data)} bytes")
     return full_data
 
