@@ -304,9 +304,24 @@ def initialize_content_store(storage_path):
         for filename in os.listdir(STORAGE_PATH):
             full_path = os.path.join(STORAGE_PATH, filename)
             if os.path.isfile(full_path):
-                content_name = "/" + filename.replace('_', '/')[:-4]  # remove .ext
+                content_name = "/" + filename.replace('_', '/')
                 store_data(content_name, full_path)
                 log("INFO", f"Cached '{content_name}' from storage")
+
+def clear_content_store():
+    """Delete all entries in the Content Store (CS) and clear all stored files."""
+    global STORAGE_PATH
+
+    # Clear files on disk
+    if STORAGE_PATH and NODE_NAME != "/dlsu/goks/cam" and os.path.exists(STORAGE_PATH):
+        for filename in os.listdir(STORAGE_PATH):
+            full_path = os.path.join(STORAGE_PATH, filename)
+            if os.path.isfile(full_path):
+                os.remove(full_path)
+
+        log("SUCCESS", "Content store has been fully cleared.")
+
+
 
 def lookup_fib(name: str):
     """
@@ -380,7 +395,6 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     name = packet["name"]
     update_metrics("interests_received")
 
-
     # First check Content Store
     cached_data = lookup_content(name)
     if cached_data:
@@ -391,9 +405,14 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
         SEND_QUEUE.put((sock, addr, response))
         log("INFO", f"Served '{name}' from CS to {addr}")
 
-        update_metrics("data_packets_sent")
+        update_metrics("data_packets_sent", len(response))
 
         return 
+    
+    if name in PIT:
+        log("INFO", f"Interest '{name}' already in PIT, aggregating")
+        store_interest(name, interface, addr)
+        return
 
     # If this Interest is meant for this node
     if name.startswith(NODE_NAME):
@@ -462,7 +481,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
 
                 # store interest to PIT
                 store_interest(name, interface, addr)
-                log("INFO", f"PIT: {PIT}")
+                # log("INFO", f"PIT: {PIT}")
 
                 # send
                 SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [interest_packet]))
@@ -543,15 +562,16 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                     # Forward the fragment
                     SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
                     log("INFO", f"Forwarding fragment {frag_num}/{frag_total} for {name} to {PIT_MAPPING[face]}")
-                    
+                    update_metrics("data_packets_sent")
+
+                    processed_data = None
+
                     # Cache if all fragments received
                     if len(FRAG_BUFFER[name]["frags"]) == frag_total:
                         reassembled_data = reassemble_fragments(name, frag_total)
-                        cleanup_flags["delete_pit"] = True
-                        update_metrics("data_packets_sent")
+                        cleanup_flags["delete_pit"] = True            
                         processed_data = reassembled_data  # Return to be saved once
-                    
-                    processed_data = None
+
                 # Non-fragmented data
                 else:
                     SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
@@ -601,7 +621,7 @@ def find_pit_entry(name):
     pit_entry = PIT[name] if name in PIT else None
     waiting_for_name = None
     original_name = name
-    log("INFO", f"PIT: {pit_entry}")
+    log("INFO", f"PIT entry found for {name}")
     # Direct match
     # if name in PIT:
     #     pit_entry = PIT[name]
@@ -739,8 +759,8 @@ def parse_nfn_expression(expr: str):
 
     func, arg = match.groups()
     base_name, funcs = parse_nfn_expression(arg)  # recurse inside
-    log("INFO", f"Parsing NFN expression: {expr}")
-    log("INFO", f"NFN parse result: base='{base_name}', funcs = {funcs}")
+    # log("INFO", f"Parsing NFN expression: {expr}")
+    # log("INFO", f"NFN parse result: base='{base_name}', funcs = {funcs}")
     return base_name, funcs + [func]
 
 
@@ -769,7 +789,7 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
                 response
             ))
     
-    update_metrics("data_packets_sent")
+    update_metrics("data_packets_sent", len(response))
     log("INFO", f"Processed NFN '{name}' and sent to {pit_entry['interface']}")
 
     cleanup_flags["delete_pit"] = True

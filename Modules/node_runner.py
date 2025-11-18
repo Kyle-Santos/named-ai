@@ -38,6 +38,8 @@ def load_node_config(config_path: str, node_name: str):
     NN.NODE_NAME = node_config["name"]
     NN.FIB = node_config.get("FIB", {})
     NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
+
+    # Initialize content store
     NN.initialize_content_store(node_config.get("storage", ""))
 
     NN.NODE_FUNCTIONS_MAPPING = node_config.get("node_functions_mapping", {})
@@ -232,6 +234,11 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
             time.sleep(1)
     except KeyboardInterrupt:
         print("\nShutting down node...")
+
+        try:
+            NN.clear_content_store()
+        except Exception as e:
+            print(f"Error clearing content store: {e}")
 
 
 def pit_cleanup_worker(gui_callback=None):
@@ -455,13 +462,13 @@ if GUI_AVAILABLE:
             left_vbox.setSpacing(8)
 
             self.interests_sent_box = self._make_counter(
-                "interests_sent", "Interests Sent", self.ACCENT2
+                "interests_sent", "Interests Sent", self.SUCCESS
             )
             self.data_packets_sent_box = self._make_counter(
-                "data_packets_sent", "Data Sent", self.SUCCESS
+                "data_packets_sent", "Data Sent", self.ACCENT
             )
             self.failed_packets_box = self._make_counter(
-                "failed_packets", "Failed Packets", self.INFO
+                "failed_packets", "Failed Packets", self.ERROR
             )
 
             left_vbox.addWidget(self.interests_sent_box)
@@ -473,13 +480,13 @@ if GUI_AVAILABLE:
             right_vbox.setSpacing(8)
 
             self.interests_received_box = self._make_counter(
-                "interests_received", "Interests Received", self.WARN
+                "interests_received", "Interests Received", self.SUCCESS
             )
             self.data_packets_received_box = self._make_counter(
-                "data_packets_received", "Data Received", self.ERROR
+                "data_packets_received", "Data Received", self.ACCENT
             )
             self.total_data_bytes_received_box = self._make_counter(
-                "total_data_bytes_received", "Total KBs Received", self.ACCENT
+                "total_data_bytes_received", "Total KBs Received", self.ACCENT3
             )
 
             right_vbox.addWidget(self.interests_received_box)
@@ -507,7 +514,7 @@ if GUI_AVAILABLE:
             rightlay.addWidget(self.table, 1)
 
             rightlay.setStretch(0, 1)   # stats_row
-            rightlay.setStretch(1, 2)   # table (still gets more, but stats_row can grow)
+            rightlay.setStretch(1, 3)   # table (increased to give more space)
             
             split.addWidget(self.right, 1)
             
@@ -543,13 +550,13 @@ if GUI_AVAILABLE:
             box.setFrameShape(QFrame.StyledPanel)
 
             lay = QVBoxLayout(box)
-            lay.setContentsMargins(5, 10, 5, 10)
+            lay.setContentsMargins(3, 5, 3, 5)
 
             t = QLabel(display_label)
-            t.setStyleSheet(f"color:{color}; font-size:11pt; font-weight:700;")
+            t.setStyleSheet(f"color:{color}; font-size:9pt; font-weight:700;")
 
             v = QLabel("0")
-            v.setStyleSheet("font-size:20pt; font-weight:800;")
+            v.setStyleSheet("font-size:14pt; font-weight:800;")
             v.setObjectName(f"val_{metric_name}")
 
             lay.addWidget(t)
@@ -755,6 +762,7 @@ if GUI_AVAILABLE:
             if force_log:
                 self.append_log("INFO", f"Stats — PIT: {self._safe_len(pit)}, FIB: {self._safe_len(fib)}, CS: {self._safe_len(cs)}")
 
+
         def show_structure(self, which: str):
             obj = None
             if which == "pit":
@@ -799,6 +807,11 @@ if GUI_AVAILABLE:
                 if hasattr(self, "timer"):
                     self.timer.stop()
 
+                try:
+                    NN.clear_content_store()
+                except Exception as e:
+                    print(f"Error clearing content store: {e}")
+                
                 # Hard exit (forces all threads to close)
                 os._exit(0)
 
@@ -835,11 +848,12 @@ def main():
         print("ERROR: PyQt5 is not installed. Install it with: pip install PyQt5")
         print("Running in CLI mode instead...")
         return
-    else:
+    else: 
         app = QApplication(sys.argv)
         win = NodeMonitor(start_mode, node_name)
         win.show()
         sys.exit(app.exec_())
+
 
 
 if __name__ == "__main__":
