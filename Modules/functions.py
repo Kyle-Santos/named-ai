@@ -1,4 +1,6 @@
-import os 
+import os
+
+import joblib 
 # Suppress TensorFlow info/warning logs
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # 0=all, 1=info, 2=warning, 3=error
 import sys
@@ -35,6 +37,8 @@ def get_function(func_name: str):
         "orchestrate": orchestrate,
         "normalize": normalize,
         "insightface_embedding": insightface_embedding,
+        "facenet_embedding": facenet_embedding,
+        "mfn_embedding": mfn_embedding,
         "recognize": recognize,
     }
     return functions_map.get(func_name, None)
@@ -197,7 +201,7 @@ def orchestrate(name: str, model, PIT, functions_mapping) -> str:
 
     model_pipelines = {
         "insightface": ["resize", "normalize", "insightface_embedding"],
-        "openface": ["detect", "resize", "openface_embedding"],
+        "facenet": ["detect", "resize", "normalize", "facenet_embedding"],
         "mobilefacenet": ["detect", "grayscale", "resize", "normalize", "mfn_embedding"],
     }
 
@@ -272,15 +276,20 @@ def _build_segment_expression(node, funcs, inner_expr):
 def load_facebank():
     facebanks = {
         "insightface": "facebanks\\facebank_insightface.pt",
-        "facenet": None,
-        "mobilefacenet": None,
+        "facenet": "facebanks\\facebank_facenet.pkl",
+        "mobilefacenet": "facebanks\\facebank_mfn.pkl",
     }
 
     for model, path in facebanks.items():
         if path is None or not os.path.exists(path):
             print(f"[ERROR] {model.upper()} Facebank not found at {path}.")
             continue
-        data = torch.load(path)
+
+        if ".pkl" in path:
+            data = joblib.load(path)
+        else:
+            data = torch.load(path)
+
         FACEBANKS[model] = {
             "names": data["names"],
             "embeddings": data["embeddings"]

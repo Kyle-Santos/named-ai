@@ -51,6 +51,12 @@ def load_node_config(config_path: str, node_name: str):
 
         if func_name == "insightface_embedding":
             functions.load_insightface()
+
+        if func_name == "facenet_embedding":
+            functions.load_facenet()
+
+        if func_name == "mfn_embedding":
+            functions.load_mfn()
             
         NN.FUNCTIONS_TABLE[func_name] = functions.get_function(func_name)
 
@@ -121,6 +127,7 @@ def processor_thread(gui_callback=None):
             import traceback
             traceback.print_exc()  # Print full stack trace
             time.sleep(0.1)
+
 
 def receiver(face, entry, gui_callback=None):
     sock = entry["sock"]
