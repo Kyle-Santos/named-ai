@@ -19,14 +19,15 @@ from insightface.app import FaceAnalysis
 #for facenet
 import joblib
 from collections import Counter
-from facenet_pytorch import InceptionResnetV1
+from facenet_pytorch import InceptionResnetV1, MTCNN
 
 #for MFN
-from MobileFaceNet.mobilefacenet import MobileFaceNet
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ML-models/model3_mfn')))
+from mobilefacenet import MobileFaceNet
 
-# TARGET_SIZE = (112, 112)  # Width x Height - Standard size for MobileFaceNet
-TARGET_SIZE = (640, 640)  # Width x Height - Standard size for INSIGHT FACE
-
+TARGET_SIZE = (128, 128)  # Width x Height - Standard size for MobileFaceNet
+# TARGET_SIZE = (640, 640)  # Width x Height - Standard size for INSIGHT FACE
+# TARGET_SIZE = (160, 160)
 CHOSEN_MODEL = None
 
 FACEBANKS = {
@@ -210,7 +211,8 @@ def orchestrate(name: str, model, PIT, functions_mapping) -> str:
     model_pipelines = {
         "insightface": ["resize", "normalize", "insightface_embedding"],
         "facenet": ["detect", "resize", "normalize", "facenet_embedding"],
-        "mobilefacenet": ["detect", "grayscale", "resize", "normalize", "mfn_embedding"],
+        #"mobilefacenet": ["detect", "grayscale", "resize", "normalize", "mfn_embedding"],
+        "mobilefacenet": ["detect", "mfn_embedding"],
     }
 
     # order of nearest to camera
@@ -302,7 +304,7 @@ def load_facebank():
             "names": data["names"],
             "embeddings": data["embeddings"]
         }
-        print(f"[INFO] Loaded facebank with {len(FACEBANKS[model]['names'])} identities.")
+        print(f"[INFO] Loaded {model} facebank with {len(FACEBANKS[model]['names'])} identities.")
 
 # recognize
 def recognize(data_bytes: bytes):
@@ -363,26 +365,48 @@ def recognize(data_bytes: bytes):
 
 # MODELS FUNCTIONS
 insight_app = None
-facenet_mtcnn = None
 facenet_model = None
 mfn_model = None
 
 def load_mfn():
+    global mfn_model
     MODEL_PATH = 'mobilefacenet.pt'
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     mfn_model = MobileFaceNet().to(device)
     mfn_model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
-    mfn_model.eval
+    mfn_model.eval()
 
 def mfn_embedding(image_bytes: bytes) -> bytes:
+    global mfn_model
     try:
         nparr = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:
             print("[WARN] Failed to decode resized image.")
             return b''
+         # MobileFaceNet requires RGB
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        # Resize to MobileFaceNet input size
+        img = cv2.resize(img, (112, 112))
+
+        # Normalize to [-1, 1]
+        img = img.astype(np.float32)
+        img = (img - 127.5) / 128.0
+
+        # HWC -> CHW
+        img = np.transpose(img, (2, 0, 1))
+
+        # Convert numpy array → torch tensor
+        tensor = torch.from_numpy(img).unsqueeze(0)
+
+        # Move to model device
+        device = next(mfn_model.parameters()).device
+        tensor = tensor.to(device)
+
+        # Forward pass
         with torch.no_grad():
-            emb = mfn_model(img.unsqueeze(0)).cpu().numpy()[0]
+            emb = mfn_model(tensor).cpu().numpy()[0]
         buf = BytesIO()
         np.save(buf, emb)
         return buf.getvalue()
@@ -393,22 +417,37 @@ def mfn_embedding(image_bytes: bytes) -> bytes:
 
 def load_facenet():
     #initialize model
+    global facenet_model
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    facenet_mtcnn = MTCNN(image_size=160, margin=20, device = device)
     facenet_model = InceptionResnetV1(pretrained='vggface2').eval().to(device)
 
 def facenet_embedding(image_bytes: bytes) -> bytes:
+    global facenet_model, mt
     try:
+        cropped_bytes = detect(image_bytes)
         nparr = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:
             print("[WARN] Failed to decode resized image.")
             return b''
-    
-        with torch.no_grad():
-            emb = facenet_model(img.unsqueeze(0)).cpu().numpy()[0]
+        #img = cv2.resize(img, (160, 160))
+        #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = img.astype(np.float32)
+        #img = (img - 127.5) / 128.0
 
-        #normalize emb
+        # 5. HWC → CHW
+        img = np.transpose(img, (2, 0, 1))
+
+        # 6. Add batch dimension and convert to tensor
+        face_tensor = torch.from_numpy(img).unsqueeze(0).to(
+            next(facenet_model.parameters()).device
+        )
+
+        # 7. Run through FaceNet
+        with torch.no_grad():
+            emb = facenet_model(face_tensor).cpu().numpy()[0]
+
+        # 8. Normalize embedding
         emb = emb / np.linalg.norm(emb)
 
         #serialize
@@ -473,3 +512,4 @@ def insightface_embedding(image_bytes: bytes) -> bytes:
 #     }
 # interest_name = orchestrate("/dlsu/goks/cam/capture1.jpg", "openface", {}, node_functions_mapping)
 # print("Generated Interest Name:", interest_name)
+
