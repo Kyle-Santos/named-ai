@@ -398,9 +398,12 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     # First check Content Store
     cached_data = lookup_content(name)
     if cached_data:
-        # time in ms received the packet
-        received_time_ms = int(time.time() * 1000)
-        log("ERROR", f"Received cached content for '{name}' at {received_time_ms} ms")
+        from datetime import datetime
+        sent_time = datetime.now()
+        log(
+            "ERROR",
+            f"Interest '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+        )
 
         update_CS_timestamp(name)
         bytes = process_name_request(cached_data["path"])
@@ -408,6 +411,14 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
 
         SEND_QUEUE.put((sock, addr, response))
         log("INFO", f"Served '{name}' from CS to {addr}")
+
+
+        from datetime import datetime
+        sent_time = datetime.now()
+        log(
+            "ERROR",
+            f"Interest '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+        )
 
         update_metrics("data_packets_sent", len(response))
 
@@ -615,6 +626,13 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
 
             PIT.pop(original_name)
             log("INFO", f"Removed PIT entry for '{original_name}' after processing.")
+
+            from datetime import datetime
+            sent_time = datetime.now()
+            log(
+                "ERROR",
+                f"Interest '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+            )
 
         return cleanup_flags["delete_pit"]
 

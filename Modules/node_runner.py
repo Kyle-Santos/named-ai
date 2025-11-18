@@ -668,9 +668,13 @@ if GUI_AVAILABLE:
                     print(msg)
                     self.append_log("INFO", msg)
 
-                    # append log ms sent timestamp
-                    sent_time_ms = int(time.time() * 1000)
-                    self.append_log("ERROR", f"Interest sent timestamp: {sent_time_ms} ms")
+                    # append log sent timestamp
+                    from datetime import datetime
+                    sent_time = datetime.now()
+                    self.append_log(
+                        "ERROR",
+                        f"Interest '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+                    )
 
                     return
                 
