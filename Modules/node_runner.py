@@ -300,8 +300,8 @@ if GUI_AVAILABLE:
                 self.ACCENT3 = "#CCCCFF"  
                 bg_color = "#000000"
             elif node_lower.startswith("/dlsu"):
-                self.SUCCESS = "#00BFFF"  
-                self.INFO = "#5CFFB5"     
+                self.SUCCESS = "#34d399"  
+                self.INFO = "#00BFFF"     
                 self.WARN = "#E0C3FC"     
                 self.ERROR = "#f87171"    
                 self.ACCENT = "#00BFFF"   
@@ -310,7 +310,7 @@ if GUI_AVAILABLE:
                 bg_color = "#001F3F"
             else:
                 self.SUCCESS = "#34d399" 
-                self.INFO = "#ffb246" 
+                self.INFO = "#00BFFF" 
                 self.WARN = "#fbbf24" 
                 self.ERROR = "#f87171" 
                 self.ACCENT = "#22d3ee" 
@@ -321,7 +321,7 @@ if GUI_AVAILABLE:
 
             self.TIME_COLOR = "#ffffff"
 
-            self.setWindowTitle(f"NDN Node Monitor - {node_name}")
+            self.setWindowTitle(f"Named Networking Node Monitor - {node_name}")
 
             # connect signal to slot
             self.log_signal.connect(self.append_log)
@@ -563,6 +563,9 @@ if GUI_AVAILABLE:
             elif mode == "cs":
                 self.table.setColumnCount(2)
                 headers = ["NAME", "ACCESS TIME"]
+            elif mode == "fib":
+                self.table.setColumnCount(3)
+                headers = ["PREFIX", "FACES", "COUNT"]
             elif mode == "metrics":
                 self.table.setColumnCount(2)
                 headers = ["METRIC", "VALUE"]
@@ -617,13 +620,11 @@ if GUI_AVAILABLE:
                 
                 if raw.lower().startswith("show "):
                     what = raw.split(" ", 1)[1].strip().lower()
-                    if what in ("pit", "cs"):
+                    if what in ("pit", "cs", "fib"):
                         self.current_table = what
                         self.set_table_headers(what)
                         self.refresh_stats()
                         self.append_log("SUCCESS", f"Switched table to {what.upper()}")
-                    elif what == "fib":
-                        self.show_structure("fib")
                     elif what == "metrics":
                         self.current_table = "metrics"
                         self.set_table_headers("metrics")
