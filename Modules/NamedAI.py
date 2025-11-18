@@ -398,6 +398,10 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     # First check Content Store
     cached_data = lookup_content(name)
     if cached_data:
+        # time in ms received the packet
+        received_time_ms = int(time.time() * 1000)
+        log("ERROR", f"Received cached content for '{name}' at {received_time_ms} ms")
+
         update_CS_timestamp(name)
         bytes = process_name_request(cached_data["path"])
         response = build_data_packet(name, bytes)

@@ -668,6 +668,10 @@ if GUI_AVAILABLE:
                     print(msg)
                     self.append_log("INFO", msg)
 
+                    # append log ms sent timestamp
+                    sent_time_ms = int(time.time() * 1000)
+                    self.append_log("ERROR", f"Interest sent timestamp: {sent_time_ms} ms")
+
                     return
                 
                 self.append_log("WARN", f"Unknown command: {raw}")

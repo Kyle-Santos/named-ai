@@ -10,7 +10,7 @@ python .\node_runner.py --node /dlsu/andrew
 
 python .\node_runner.py --node /dlsu/velasco
 
-python .\node_runner.py --client client
+python .\node_runner.py --client user
 
 send interest /dlsu/goks/cam/capture8.jpg
 

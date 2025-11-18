@@ -2,7 +2,7 @@
     "ip": "127.0.0.1",
     "nodes": [
         {
-            "name": "client",
+            "name": "user",
             "interfaces": [
                 { "face": "face0", "port": 9001 }
             ],
