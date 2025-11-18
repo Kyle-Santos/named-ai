@@ -462,13 +462,13 @@ if GUI_AVAILABLE:
             left_vbox.setSpacing(8)
 
             self.interests_sent_box = self._make_counter(
-                "interests_sent", "Interests Sent", self.ACCENT2
+                "interests_sent", "Interests Sent", self.SUCCESS
             )
             self.data_packets_sent_box = self._make_counter(
-                "data_packets_sent", "Data Sent", self.SUCCESS
+                "data_packets_sent", "Data Sent", self.ACCENT
             )
             self.failed_packets_box = self._make_counter(
-                "failed_packets", "Failed Packets", self.INFO
+                "failed_packets", "Failed Packets", self.ERROR
             )
 
             left_vbox.addWidget(self.interests_sent_box)
@@ -480,13 +480,13 @@ if GUI_AVAILABLE:
             right_vbox.setSpacing(8)
 
             self.interests_received_box = self._make_counter(
-                "interests_received", "Interests Received", self.WARN
+                "interests_received", "Interests Received", self.SUCCESS
             )
             self.data_packets_received_box = self._make_counter(
-                "data_packets_received", "Data Received", self.ERROR
+                "data_packets_received", "Data Received", self.ACCENT
             )
             self.total_data_bytes_received_box = self._make_counter(
-                "total_data_bytes_received", "Total KBs Received", self.ACCENT
+                "total_data_bytes_received", "Total KBs Received", self.ACCENT3
             )
 
             right_vbox.addWidget(self.interests_received_box)
@@ -514,7 +514,7 @@ if GUI_AVAILABLE:
             rightlay.addWidget(self.table, 1)
 
             rightlay.setStretch(0, 1)   # stats_row
-            rightlay.setStretch(1, 2)   # table (still gets more, but stats_row can grow)
+            rightlay.setStretch(1, 3)   # table (increased to give more space)
             
             split.addWidget(self.right, 1)
             
@@ -550,13 +550,13 @@ if GUI_AVAILABLE:
             box.setFrameShape(QFrame.StyledPanel)
 
             lay = QVBoxLayout(box)
-            lay.setContentsMargins(5, 10, 5, 10)
+            lay.setContentsMargins(3, 5, 3, 5)
 
             t = QLabel(display_label)
-            t.setStyleSheet(f"color:{color}; font-size:11pt; font-weight:700;")
+            t.setStyleSheet(f"color:{color}; font-size:9pt; font-weight:700;")
 
             v = QLabel("0")
-            v.setStyleSheet("font-size:20pt; font-weight:800;")
+            v.setStyleSheet("font-size:14pt; font-weight:800;")
             v.setObjectName(f"val_{metric_name}")
 
             lay.addWidget(t)
