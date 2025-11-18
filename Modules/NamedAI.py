@@ -618,7 +618,8 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             if METRICS["ave_RTT"] == 0.0:
                 METRICS["ave_RTT"] = rtt * 1000  # in ms
             METRICS["ave_RTT"] = (METRICS["ave_RTT"] + rtt * 1000) / 2
-            log("INFO", f"RTT for '{original_name}': {rtt:.4f}s, Average RTT: {METRICS['ave_RTT']:.4f}ms")
+            rtt_ms = rtt * 1000
+            log("INFO", f"RTT for '{original_name}': {rtt_ms:.4f}ms, Average RTT: {METRICS['ave_RTT']:.4f}ms")
 
             # Goodput
             data_kbytes = METRICS["total_data_bytes_received_per_name"] / 1024  # in KB
