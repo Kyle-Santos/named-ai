@@ -38,6 +38,8 @@ def load_node_config(config_path: str, node_name: str):
     NN.NODE_NAME = node_config["name"]
     NN.FIB = node_config.get("FIB", {})
     NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
+
+    # Initialize content store
     NN.initialize_content_store(node_config.get("storage", ""))
 
     NN.NODE_FUNCTIONS_MAPPING = node_config.get("node_functions_mapping", {})
@@ -232,6 +234,11 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
             time.sleep(1)
     except KeyboardInterrupt:
         print("\nShutting down node...")
+
+        try:
+            NN.clear_content_store()
+        except Exception as e:
+            print(f"Error clearing content store: {e}")
 
 
 def pit_cleanup_worker(gui_callback=None):
@@ -755,6 +762,7 @@ if GUI_AVAILABLE:
             if force_log:
                 self.append_log("INFO", f"Stats — PIT: {self._safe_len(pit)}, FIB: {self._safe_len(fib)}, CS: {self._safe_len(cs)}")
 
+
         def show_structure(self, which: str):
             obj = None
             if which == "pit":
@@ -799,6 +807,11 @@ if GUI_AVAILABLE:
                 if hasattr(self, "timer"):
                     self.timer.stop()
 
+                try:
+                    NN.clear_content_store()
+                except Exception as e:
+                    print(f"Error clearing content store: {e}")
+                
                 # Hard exit (forces all threads to close)
                 os._exit(0)
 
@@ -835,11 +848,12 @@ def main():
         print("ERROR: PyQt5 is not installed. Install it with: pip install PyQt5")
         print("Running in CLI mode instead...")
         return
-    else:
+    else: 
         app = QApplication(sys.argv)
         win = NodeMonitor(start_mode, node_name)
         win.show()
         sys.exit(app.exec_())
+
 
 
 if __name__ == "__main__":

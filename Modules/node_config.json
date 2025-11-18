@@ -30,7 +30,7 @@
             "node_functions_mapping": {
                 "/dlsu/goks": ["detect", "resize"],
                 "/dlsu/andrew": ["mfn_embedding", "grayscale", "resize"],
-                "/dlsu/velasco": ["insightface_embedding", "openface_embedding", "normalize"]
+                "/dlsu/velasco": ["insightface_embedding", "facenet_embedding", "normalize"]
             }
         },
 
@@ -81,7 +81,7 @@
                 "/dlsu/andrew": { "face": "face2", "port": 9023 }
             },
             "storage": "nfn_nodes/velasco/",
-            "functions": ["insightface_embedding", "openface_embedding", "normalize"]
+            "functions": ["insightface_embedding", "facenet_embedding", "normalize"]
         },
 
         {
