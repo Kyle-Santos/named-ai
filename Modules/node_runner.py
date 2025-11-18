@@ -308,7 +308,7 @@ if GUI_AVAILABLE:
                 self.SUCCESS = "#00FFFF"  
                 self.INFO = "#66FF99"     
                 self.WARN = "#CCCCFF"     
-                self.ERROR = "#E6F1FF"     
+                self.ERROR = "#f87171"     
                 self.ACCENT = "#00FFFF"   
                 self.ACCENT2 = "#66FF99"  
                 self.ACCENT3 = "#CCCCFF"  
