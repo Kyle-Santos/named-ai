@@ -15,7 +15,15 @@ import cv2
 import torch
 import json
 from insightface.app import FaceAnalysis
-  
+
+#for facenet
+import joblib
+from collections import Counter
+from facenet_pytorch import InceptionResnetV1
+
+#for MFN
+from MobileFaceNet.mobilefacenet import MobileFaceNet
+
 # TARGET_SIZE = (112, 112)  # Width x Height - Standard size for MobileFaceNet
 TARGET_SIZE = (640, 640)  # Width x Height - Standard size for INSIGHT FACE
 
@@ -355,6 +363,67 @@ def recognize(data_bytes: bytes):
 
 # MODELS FUNCTIONS
 insight_app = None
+facenet_mtcnn = None
+facenet_model = None
+mfn_model = None
+
+def load_mfn():
+    MODEL_PATH = 'mobilefacenet.pt'
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    mfn_model = MobileFaceNet().to(device)
+    mfn_model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+    mfn_model.eval
+
+def mfn_embedding(image_bytes: bytes) -> bytes:
+    try:
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            print("[WARN] Failed to decode resized image.")
+            return b''
+        with torch.no_grad():
+            emb = mfn_model(img.unsqueeze(0)).cpu().numpy()[0]
+        buf = BytesIO()
+        np.save(buf, emb)
+        return buf.getvalue()
+    
+    except Exception as e:
+        print(f"[ERROR] mfn_embedding: {e}")
+        return b''
+
+def load_facenet():
+    #initialize model
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    facenet_mtcnn = MTCNN(image_size=160, margin=20, device = device)
+    facenet_model = InceptionResnetV1(pretrained='vggface2').eval().to(device)
+
+def facenet_embedding(image_bytes: bytes) -> bytes:
+    try:
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            print("[WARN] Failed to decode resized image.")
+            return b''
+    
+        with torch.no_grad():
+            emb = facenet_model(img.unsqueeze(0)).cpu().numpy()[0]
+
+        #normalize emb
+        emb = emb / np.linalg.norm(emb)
+
+        #serialize
+        buf = BytesIO()
+        np.save(buf, emb)
+
+        return buf.getvalue()
+    
+    except Exception as e:
+        print(f"[ERROR] facenet_embedding: {e}")
+        return b''
+    
+
+
+    
 
 def load_insightface():
     global insight_app  
