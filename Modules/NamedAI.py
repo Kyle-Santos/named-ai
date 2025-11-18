@@ -181,6 +181,7 @@ METRICS = {
     "failed_packets": 0,
     "total_data_bytes_received": 0,
     "total_data_overhead_bytes_received": 0,
+    "total_data_bytes_received_per_name": 0, # data bytes per name
     
     "ave_RTT": 0.0,  # in milliseconds
 
@@ -540,6 +541,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
         update_metrics("data_packets_received")
         update_metrics("total_data_bytes_received", len(data))
         update_metrics("total_data_overhead_bytes_received", len(raw_packet))
+        update_metrics("total_data_bytes_received_per_name", len(data))
 
 
         # Find the relevant PIT entry
@@ -619,10 +621,12 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             log("INFO", f"RTT for '{original_name}': {rtt:.4f}s, Average RTT: {METRICS['ave_RTT']:.4f}ms")
 
             # Goodput
-            data_kbytes = METRICS["total_data_bytes_received"] / 1024  # in KB
+            data_kbytes = METRICS["total_data_bytes_received_per_name"] / 1024  # in KB
             overhead_data_kbytes = METRICS["total_data_overhead_bytes_received"] / 1024 # in KB
             log("INFO", f"Final Size of {original_name}: {data_kbytes:.2f} KB")
             log("INFO", f"Final Size with Overhead: {overhead_data_kbytes:.2f} KB")
+            METRICS["total_data_overhead_bytes_received"] = 0  # reset for next
+            METRICS["total_data_bytes_received_per_name"] = 0  # reset for next
 
             PIT.pop(original_name)
             log("INFO", f"Removed PIT entry for '{original_name}' after processing.")
