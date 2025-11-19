@@ -181,7 +181,9 @@ def normalize(image_bytes: bytes) -> bytes:
 
 def orchestrate(name: str, model, PIT, functions_mapping) -> str:
     """Build an NFN Interest string for the requested recognition pipeline."""
+    global CHOSEN_MODEL
     model = (model or "").lower()
+    CHOSEN_MODEL = model
 
     model_pipelines = {
         "insightface": ["resize_insightface", "normalize", "insightface_embedding"],
@@ -560,11 +562,11 @@ def insightface_embedding(image_bytes: bytes) -> bytes:
 
 
 #  testing
-# node_functions_mapping =  {
-#         "/dlsu/goks": ["detect", "resize"],
-#         "/dlsu/andrew": ["mfn_embedding", "grayscale", "resize"],
-#         "/dlsu/velasco": ["insightface_embedding", "facenet_embedding", "normalize"]
-#     }
+# node_functions_mapping = {
+#                 "/dlsu/goks": ["detect", "resize_facenet", "resize_mfn", "resize_insightface"],
+#                 "/dlsu/andrew": ["mfn_embedding", "grayscale", "resize_mfn"],
+#                 "/dlsu/velasco": ["insightface_embedding", "facenet_embedding", "normalize"]
+#             }
 
 # interest_name = orchestrate("/dlsu/goks/cam/capture1.jpg", "insightface", {}, node_functions_mapping)
 # print("Generated Interest Name:", interest_name)
