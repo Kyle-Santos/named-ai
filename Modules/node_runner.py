@@ -45,8 +45,8 @@ def load_node_config(config_path: str, node_name: str):
 
     NN.NODE_FUNCTIONS_MAPPING = node_config.get("node_functions_mapping", {})
     
-    functions = dlsu["node_functions_mapping"].get(NN.NODE_NAME, []) 
-    for func_name in functions:
+    functions_list = dlsu["node_functions_mapping"].get(NN.NODE_NAME, []) 
+    for func_name in functions_list:
         if func_name == "detect":
             functions.load_mtcnn()
 
