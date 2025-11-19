@@ -26,15 +26,15 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ML-m
 from mobilefacenet import MobileFaceNet
 import torchvision.transforms as transforms
 
-# TARGET_SIZE = (112, 112)  # Width x Height - Standard size for MobileFaceNet
-# TARGET_SIZE = (640, 640)  # Width x Height - Standard size for INSIGHT FACE
-# TARGET_SIZE = (160, 160) # Width x Height - Standard size for FaceNet
-
-TARGET_SIZE = {
-    "insightface": (640, 640),
-    "facenet": (160, 160),
-    "mobilefacenet": (112, 112),
-}
+MFN_SIZE = (112, 112)  # Width x Height - Standard size for MobileFaceNet
+INSIGHTFACE_SIZE = (640, 640)  # Width x Height - Standard size for INSIGHT FACE
+FACENET_SIZE = (160, 160) # Width x Height - Standard size for FaceNet
+TARGET_SIZE = (160, 160)
+# TARGET_SIZE = {
+#    "insightface": (640, 640),
+#   "facenet": (160, 160),
+#   "mobilefacenet": (112, 112),
+#}
 CHOSEN_MODEL = None
 
 FACEBANKS = {
@@ -47,7 +47,6 @@ FACEBANKS = {
 def get_function(func_name: str):
     """Retrieve function by name."""
     functions_map = {
-        "resize": resize,
         "detect": detect,
         "grayscale": grayscale,
         "orchestrate": orchestrate,
@@ -58,34 +57,6 @@ def get_function(func_name: str):
         "recognize": recognize,
     }
     return functions_map.get(func_name, None)
-
-def resize(image_bytes: bytes) -> bytes:
-    """
-    Resize an image (bytes) to TARGET_SIZE and return encoded bytes.
-    
-    Args:
-        image_bytes (bytes): Input image data (JPEG/PNG/etc.)
-    
-    Returns:
-        bytes: Resized image as encoded bytes.
-    """
-    try:
-        # Decode image
-        img = Image.open(BytesIO(image_bytes))
-        format = img.format or "JPG"
-
-        # Resize
-        resized_img = img.resize(TARGET_SIZE[CHOSEN_MODEL], Image.Resampling.LANCZOS)
-
-        # Encode back to bytes
-        buf = BytesIO()
-        resized_img.save(buf, format=format)
-        return buf.getvalue()
-
-    except Exception as e:
-        print(f"[ERROR] Resize failed: {e}")
-        return image_bytes  # fallback
-
 # Redirect stderr to null temporarily
 stderr_fileno = sys.stderr
 sys.stderr = open(os.devnull, "w")
@@ -196,10 +167,16 @@ def normalize(image_bytes: bytes) -> bytes:
         img = Image.open(BytesIO(image_bytes)).convert("RGB")
 
         # Convert to NumPy array (HWC)
-        np_img = np.asarray(img).astype(np.float32) / 255.0
-        np_img = (np_img - 0.5) / 0.5  # normalize to [-1, 1]
+        np_img = img.astype(np.float32)
+        np_img = (img - 127.5) / 128.0 
+        #np_img = np.asarray(img).astype(np.float32) / 255.0
+        #np_img = (np_img - 0.5) / 0.5  # normalize to [-1, 1]
+        #np_img = np.asarray(img).astype(np.float32)
+        #np_img = np_img / 255.0
+        
 
         # Re-encode back to bytes (optional visualization)
+        #np_img_disp = (np_img * 255).astype(np.uint8)
         np_img_disp = ((np_img + 1) * 127.5).astype(np.uint8)
         buf = BytesIO()
         Image.fromarray(np_img_disp).save(buf, format=img.format or "JPEG")
@@ -218,7 +195,7 @@ def orchestrate(name: str, model, PIT, functions_mapping) -> str:
     model_pipelines = {
         "insightface": ["resize", "normalize", "insightface_embedding"],
         "facenet": ["detect", "resize", "normalize", "facenet_embedding"],
-        "mobilefacenet": ["detect","resize", "grayscale", "normalize", "mfn_embedding"],
+        "mobilefacenet": ["detect","resize","normalize", "grayscale", "mfn_embedding"],
     }
 
     # Priority tiers:
@@ -406,6 +383,50 @@ insight_app = None
 facenet_model = None
 mfn_model = None
 
+def resize_mfn(image_bytes: bytes) -> bytes:
+    try:
+        img = Image.open(BytesIO(image_bytes))
+        format = img.format or "JPG"
+
+        resized_img = img.resize(MFN_SIZE, Image.Resampling.LANCZOS)
+
+        #encode back to bytes
+        buf = BytesIO
+        resized_img.save(buf, format=format)
+        return buf.getvalue
+    except Exception as e:
+        print(f"[ERROR] Resized failed: {e}")
+        return image_bytes #fallback
+def resize_facenet(image_bytes: bytes) -> bytes:
+    try:
+        img = Image.open(BytesIO(image_bytes))
+        format = img.format or "JPG"
+
+        resized_img = img.resize(FACENET_SIZE, Image.Resampling.LANCZOS)
+
+        #encode back to bytes
+        buf = BytesIO
+        resized_img.save(buf, format=format)
+        return buf.getvalue
+    except Exception as e:
+        print(f"[ERROR] Resized failed: {e}")
+        return image_bytes #fallback
+def resize_insightface(image_bytes: bytes) -> bytes:
+    try:
+        img = Image.open(BytesIO(image_bytes))
+        format = img.format or "JPG"
+
+        resized_img = img.resize(INSIGHTFACE_SIZE, Image.Resampling.LANCZOS)
+
+        #encode back to bytes
+        buf = BytesIO
+        resized_img.save(buf, format=format)
+        return buf.getvalue
+    except Exception as e:
+        print(f"[ERROR] Resized failed: {e}")
+        return image_bytes #fallback
+
+
 def load_mfn():
     global mfn_model
     filename = "weights/mobilefacenet.pt"
@@ -424,14 +445,13 @@ def mfn_embedding(image_bytes: bytes) -> bytes:
             return b''
 
         # BGR → RGB
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         # Resize
         #img = cv2.resize(img, (112, 112))
 
-        # ----- MATCH PYTORCH TRANSFORM EXACTLY -----
         img = img.astype(np.float32) / 255.0  
-        img = (img - 0.5) / 0.5                # SAME AS transforms.Normalize
+        img = (img - 0.5) / 0.5                
 
         # HWC → CHW
         img = np.transpose(img, (2, 0, 1))
@@ -475,7 +495,7 @@ def facenet_embedding(image_bytes: bytes) -> bytes:
             print("[WARN] Failed to decode resized image.")
             return b''
         #img = cv2.resize(img, (160, 160))
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img = img.astype(np.float32)
         img = (img - 127.5) / 128.0
 
