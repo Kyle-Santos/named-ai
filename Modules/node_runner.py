@@ -32,7 +32,7 @@ def load_node_config(config_path: str, node_name: str):
     with open(config_path, "r") as f:
         config = json.load(f)
     node_config = next(n for n in config["nodes"] if n["name"] == node_name)
-    dlsu = next(n for n in config["nodes"] if n["name"] == "dlsu")
+    dlsu = next(n for n in config["nodes"] if n["name"] == "/dlsu")
 
     NN.set_ip_addr(config.get("ip", "127.0.0.1"))
     
@@ -44,8 +44,9 @@ def load_node_config(config_path: str, node_name: str):
     NN.initialize_content_store(node_config.get("storage", ""))
 
     NN.NODE_FUNCTIONS_MAPPING = node_config.get("node_functions_mapping", {})
-
-    for func_name in dlsu["node_functions_mapping"][NN.NODE_NAME]:
+    
+    functions = dlsu["node_functions_mapping"].get(NN.NODE_NAME, []) 
+    for func_name in functions:
         if func_name == "detect":
             functions.load_mtcnn()
 
