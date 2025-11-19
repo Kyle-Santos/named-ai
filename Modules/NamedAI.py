@@ -13,7 +13,7 @@ GUI_CALLBACK = None
 def log(level, message, path=""):
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     level_upper = level.upper()
-    if level_upper not in ["INFO", "WARN", "ERROR", "SUCCESS"]:
+    if level_upper not in ["INFO", "WARN", "ERROR", "SUCCESS", "DEBUG"]:
         level_upper = "INFO"  # default to INFO if invalid level
     entry = {"level": level_upper, "message": message, "path": path, "timestamp": timestamp}
     LOGS.append(entry)
