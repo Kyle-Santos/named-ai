@@ -187,8 +187,8 @@ def orchestrate(name: str, model, PIT, functions_mapping) -> str:
 
     model_pipelines = {
         "insightface": ["resize_insightface", "normalize", "insightface_embedding"],
-        "facenet": ["detect", "resize_facenet", "normalize", "facenet_embedding"],
-        "mobilefacenet": ["detect","resize_mfn", "grayscale", "normalize", "mfn_embedding"],
+        "facenet": ["detect", "resize_facenet", "facenet_embedding"],
+        "mobilefacenet": ["detect","resize_mfn", "grayscale", "mfn_embedding"],
     }
 
     # Priority tiers:
@@ -384,9 +384,9 @@ def resize_mfn(image_bytes: bytes) -> bytes:
         resized_img = img.resize(MFN_SIZE, Image.Resampling.LANCZOS)
 
         #encode back to bytes
-        buf = BytesIO
+        buf = BytesIO()
         resized_img.save(buf, format=format)
-        return buf.getvalue
+        return buf.getvalue()
     except Exception as e:
         print(f"[ERROR] Resized failed: {e}")
         return image_bytes #fallback
@@ -398,9 +398,9 @@ def resize_facenet(image_bytes: bytes) -> bytes:
         resized_img = img.resize(FACENET_SIZE, Image.Resampling.LANCZOS)
 
         #encode back to bytes
-        buf = BytesIO
+        buf = BytesIO()
         resized_img.save(buf, format=format)
-        return buf.getvalue
+        return buf.getvalue()
     except Exception as e:
         print(f"[ERROR] Resized failed: {e}")
         return image_bytes #fallback
@@ -412,7 +412,7 @@ def resize_insightface(image_bytes: bytes) -> bytes:
         resized_img = img.resize(INSIGHTFACE_SIZE, Image.Resampling.LANCZOS)
 
         #encode back to bytes
-        buf = BytesIO
+        buf = BytesIO()
         resized_img.save(buf, format=format)
         return buf.getvalue
     except Exception as e:
