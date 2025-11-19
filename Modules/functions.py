@@ -414,7 +414,7 @@ def resize_insightface(image_bytes: bytes) -> bytes:
         #encode back to bytes
         buf = BytesIO()
         resized_img.save(buf, format=format)
-        return buf.getvalue
+        return buf.getvalue()
     except Exception as e:
         print(f"[ERROR] Resized failed: {e}")
         return image_bytes #fallback
