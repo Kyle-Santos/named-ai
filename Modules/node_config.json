@@ -26,8 +26,8 @@
                 "/dlsu/velasco": { "face": "face3", "port": 9026 }
             },  
             "storage": "nfn_nodes/dlsu/",
-            "functions": ["orchestrate", "recognize"],
             "node_functions_mapping": {
+                "/dlsu": ["orchestrate", "recognize"],
                 "/dlsu/goks": ["detect", "resize_facenet", "resize_mfn", "resize_insightface"],
                 "/dlsu/andrew": ["mfn_embedding", "grayscale", "resize_mfn"],
                 "/dlsu/velasco": ["insightface_embedding", "facenet_embedding", "normalize"]
