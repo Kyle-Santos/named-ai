@@ -170,10 +170,10 @@ def normalize(image_bytes: bytes) -> bytes:
         img = Image.open(BytesIO(image_bytes)).convert("RGB")
 
         # Convert to NumPy array (HWC)
-        np_img = img.astype(np.float32)
-        np_img = (img - 127.5) / 128.0 
-        #np_img = np.asarray(img).astype(np.float32) / 255.0
-        #np_img = (np_img - 0.5) / 0.5  # normalize to [-1, 1]
+        #np_img = img.astype(np.float32)
+        #np_img = (img - 127.5) / 128.0 
+        np_img = np.asarray(img).astype(np.float32) / 255.0
+        np_img = (np_img - 0.5) / 0.5  # normalize to [-1, 1]
         #np_img = np.asarray(img).astype(np.float32)
         #np_img = np_img / 255.0
         
