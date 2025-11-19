@@ -29,12 +29,7 @@ import torchvision.transforms as transforms
 MFN_SIZE = (112, 112)  # Width x Height - Standard size for MobileFaceNet
 INSIGHTFACE_SIZE = (640, 640)  # Width x Height - Standard size for INSIGHT FACE
 FACENET_SIZE = (160, 160) # Width x Height - Standard size for FaceNet
-TARGET_SIZE = (160, 160)
-# TARGET_SIZE = {
-#    "insightface": (640, 640),
-#   "facenet": (160, 160),
-#   "mobilefacenet": (112, 112),
-#}
+
 CHOSEN_MODEL = None
 
 FACEBANKS = {
