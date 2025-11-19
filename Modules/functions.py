@@ -19,15 +19,17 @@ from insightface.app import FaceAnalysis
 #for facenet
 import joblib
 from collections import Counter
-from facenet_pytorch import InceptionResnetV1, MTCNN
+from facenet_pytorch import InceptionResnetV1
 
 #for MFN
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ML-models/model3_mfn')))
 from mobilefacenet import MobileFaceNet
+import torchvision.transforms as transforms
 
-TARGET_SIZE = (128, 128)  # Width x Height - Standard size for MobileFaceNet
+
+TARGET_SIZE = (112, 112)  # Width x Height - Standard size for MobileFaceNet
 # TARGET_SIZE = (640, 640)  # Width x Height - Standard size for INSIGHT FACE
-# TARGET_SIZE = (160, 160)
+# TARGET_SIZE = (160, 160) # Width x Height - Standard size for FaceNet
 CHOSEN_MODEL = None
 
 FACEBANKS = {
@@ -211,8 +213,8 @@ def orchestrate(name: str, model, PIT, functions_mapping) -> str:
     model_pipelines = {
         "insightface": ["resize", "normalize", "insightface_embedding"],
         "facenet": ["detect", "resize", "normalize", "facenet_embedding"],
-        #"mobilefacenet": ["detect", "grayscale", "resize", "normalize", "mfn_embedding"],
-        "mobilefacenet": ["detect", "mfn_embedding"],
+        "mobilefacenet": ["detect","resize", "mfn_embedding"],
+        #"mobilefacenet": ["mfn_embedding"],
     }
 
     # order of nearest to camera
@@ -287,7 +289,7 @@ def load_facebank():
     facebanks = {
         "insightface": "facebanks\\facebank_insightface.pt",
         "facenet": "facebanks\\facebank_facenet.pkl",
-        "mobilefacenet": "facebanks\\facebank_mfn.pkl",
+        "mobilefacenet": "facebanks\\facebank_mobilefacenet1.pkl",
     }
 
     for model, path in facebanks.items():
@@ -370,50 +372,56 @@ mfn_model = None
 
 def load_mfn():
     global mfn_model
-    MODEL_PATH = 'mobilefacenet.pt'
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    mfn_model = MobileFaceNet().to(device)
-    mfn_model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+    filename = "weights/mobilefacenet.pt"
+    mfn_model = MobileFaceNet()
+    mfn_model.load_state_dict(torch.load(filename, map_location="cpu"))
     mfn_model.eval()
 
 def mfn_embedding(image_bytes: bytes) -> bytes:
     global mfn_model
     try:
+        # Decode with OpenCV
         nparr = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:
             print("[WARN] Failed to decode resized image.")
             return b''
-         # MobileFaceNet requires RGB
+
+        # BGR → RGB
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        # Resize to MobileFaceNet input size
-        img = cv2.resize(img, (112, 112))
+        # Resize
+        #img = cv2.resize(img, (112, 112))
 
-        # Normalize to [-1, 1]
-        img = img.astype(np.float32)
-        img = (img - 127.5) / 128.0
+        # ----- MATCH PYTORCH TRANSFORM EXACTLY -----
+        img = img.astype(np.float32) / 255.0  
+        img = (img - 0.5) / 0.5                # SAME AS transforms.Normalize
 
-        # HWC -> CHW
+        # HWC → CHW
         img = np.transpose(img, (2, 0, 1))
 
-        # Convert numpy array → torch tensor
-        tensor = torch.from_numpy(img).unsqueeze(0)
-
-        # Move to model device
-        device = next(mfn_model.parameters()).device
-        tensor = tensor.to(device)
+        tensor = torch.from_numpy(img).unsqueeze(0).to(
+            next(mfn_model.parameters()).device
+        )
 
         # Forward pass
         with torch.no_grad():
             emb = mfn_model(tensor).cpu().numpy()[0]
+
+        # L2 norm
+        emb = emb / np.linalg.norm(emb)
+
+        # Serialize
         buf = BytesIO()
         np.save(buf, emb)
         return buf.getvalue()
-    
+
     except Exception as e:
         print(f"[ERROR] mfn_embedding: {e}")
         return b''
+
+
+
 
 def load_facenet():
     #initialize model
@@ -431,9 +439,9 @@ def facenet_embedding(image_bytes: bytes) -> bytes:
             print("[WARN] Failed to decode resized image.")
             return b''
         #img = cv2.resize(img, (160, 160))
-        #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img = img.astype(np.float32)
-        #img = (img - 127.5) / 128.0
+        img = (img - 127.5) / 128.0
 
         # 5. HWC → CHW
         img = np.transpose(img, (2, 0, 1))
