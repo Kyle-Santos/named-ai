@@ -26,7 +26,9 @@ send interest /dlsu/velasco/normalize(/dlsu/andrew/grayscale(/dlsu/goks/resize(d
 
 
 send interest /dlsu/recognize(insightface(/dlsu/goks/cam/capture11.jpg))
+
 send interest /dlsu/recognize(facenet(/dlsu/goks/cam/capture11.jpg))
+
 send interest /dlsu/recognize(mobilefacenet(/dlsu/goks/cam/capture11.jpg))
 
 
