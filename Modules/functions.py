@@ -213,12 +213,16 @@ def orchestrate(name: str, model, PIT, functions_mapping) -> str:
     model_pipelines = {
         "insightface": ["resize", "normalize", "insightface_embedding"],
         "facenet": ["detect", "resize", "normalize", "facenet_embedding"],
-        "mobilefacenet": ["detect","resize", "mfn_embedding"],
-        #"mobilefacenet": ["mfn_embedding"],
+        "mobilefacenet": ["detect","resize", "grayscale", "normalize", "mfn_embedding"],
     }
 
-    # order of nearest to camera
-    inorder_priority_nodes = ["/dlsu/goks", "/dlsu/andrew", "/dlsu/velasco"]
+    # Priority tiers:
+    # Tier 1: goks (closest to camera)
+    # Tier 2: andrew & velasco (same priority)
+    priority_tiers = [
+        ["/dlsu/goks"],            # Tier 1 (highest)
+        ["/dlsu/andrew", "/dlsu/velasco"],  # Tier 2 (same priority)
+    ]
 
     if model not in model_pipelines:
         raise ValueError(f"Unsupported model '{model}'")
@@ -238,16 +242,56 @@ def orchestrate(name: str, model, PIT, functions_mapping) -> str:
         chosen_node = _select_node_for_function(candidates, func, PIT or {})
         assignments.append((func, chosen_node))
 
+
+    # Adjust tiers dynamically
+    adjusted_priority_tiers = []
+    for tier in priority_tiers:
+        # Copy tier so we can modify
+        new_tier = tier.copy()
+        
+        # Find node(s) in this tier that provide the embedding function
+        nodes_with_embedding = [
+            node for node in tier
+            if node in function_to_nodes.get(model_pipelines[model][-1], [])
+        ]
+        # Move them to the end of the tier
+        for node in nodes_with_embedding:
+            new_tier.remove(node)
+            new_tier.append(node)
+        
+        adjusted_priority_tiers.append(new_tier)
+
+    priority_tiers = adjusted_priority_tiers
+
     # Group functions by node
     node_to_funcs = {}
     for func, node in assignments:
         node_to_funcs.setdefault(node, []).append(func)
 
+    interest_expr = name  # start from base name
     # Build expression following priority order (innermost to outermost)
-    interest_expr = name
-    for node in inorder_priority_nodes:
-        if node in node_to_funcs:
-            interest_expr = _build_segment_expression(node, node_to_funcs[node], interest_expr)
+    for tier in priority_tiers:
+        tier_functions = []
+
+        # collect functions from nodes in this tier
+        for node in tier:
+            if node in node_to_funcs:
+                tier_functions.extend([(node, func) for func in node_to_funcs[node]])
+
+        # Group tier functions by node
+        tier_node_groups = {}
+        for node, func in tier_functions:
+            tier_node_groups.setdefault(node, []).append(func)
+        
+        # Build nested functions per node (each node only wraps once)
+        for node, funcs in tier_node_groups.items():
+            # Nest functions inside this node
+            segment = interest_expr
+            for func in funcs:
+                segment = f"{func}({segment})"
+
+            # Apply the node wrapper ONCE
+            interest_expr = f"{node}/{segment}"
 
     return interest_expr
 
@@ -268,19 +312,6 @@ def _is_node_busy(node, func, PIT):
         if funcs and func in funcs and interest_name.startswith(node):
             return True
     return False
-
-
-def _build_segment_expression(node, funcs, inner_expr):
-    if not node:
-        raise ValueError("Node assignment missing for function segment")
-    if not funcs:
-        return inner_expr
-
-    segment_expr = inner_expr
-    for func in funcs:
-        segment_expr = f"{func}({segment_expr})"
-
-    return f"{node}/{segment_expr}"
 
 
 
@@ -358,7 +389,7 @@ def recognize(data_bytes: bytes):
         if confidence < threshold:
             best_label = "Unknown"
 
-        result = {"label": best_label, "confidence": confidence}
+        result = {"label": best_label, "confidence": f"{round(confidence * 100, 2)}%"}
         return json.dumps(result).encode('utf-8')
     except Exception as e:
         print(f"[ERROR] Recognition failed: {e}")
@@ -515,9 +546,10 @@ def insightface_embedding(image_bytes: bytes) -> bytes:
 #  testing
 # node_functions_mapping =  {
 #         "/dlsu/goks": ["detect", "resize"],
-#         "/dlsu/andrew": ["grayscale", "resize"],
-#         "/dlsu/velasco": ["embedding", "normalize"]
+#         "/dlsu/andrew": ["mfn_embedding", "grayscale", "resize"],
+#         "/dlsu/velasco": ["insightface_embedding", "facenet_embedding", "normalize"]
 #     }
-# interest_name = orchestrate("/dlsu/goks/cam/capture1.jpg", "openface", {}, node_functions_mapping)
+
+# interest_name = orchestrate("/dlsu/goks/cam/capture1.jpg", "insightface", {}, node_functions_mapping)
 # print("Generated Interest Name:", interest_name)
 
