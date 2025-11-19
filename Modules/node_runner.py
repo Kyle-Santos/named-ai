@@ -279,6 +279,7 @@ if GUI_AVAILABLE:
     INFO = "#60a5fa"
     WARN = "#fbbf24"
     ERROR = "#f87171"
+    DEBUG = "#ffc800"
     ACCENT = "#22d3ee"
     ACCENT2 = "#60a5fa"
     ACCENT3 = "#a78bfa"
@@ -308,7 +309,8 @@ if GUI_AVAILABLE:
                 self.SUCCESS = "#00FFFF"  
                 self.INFO = "#66FF99"     
                 self.WARN = "#CCCCFF"     
-                self.ERROR = "#f87171"     
+                self.ERROR = "#f87171"
+                self.DEBUG = "#FFC800"     
                 self.ACCENT = "#00FFFF"   
                 self.ACCENT2 = "#66FF99"  
                 self.ACCENT3 = "#CCCCFF"  
@@ -317,7 +319,8 @@ if GUI_AVAILABLE:
                 self.SUCCESS = "#34d399"  
                 self.INFO = "#00BFFF"     
                 self.WARN = "#E0C3FC"     
-                self.ERROR = "#f87171"    
+                self.ERROR = "#f87171"
+                self.DEBUG = "#FFC800"    
                 self.ACCENT = "#00BFFF"   
                 self.ACCENT2 = "#5CFFB5"  
                 self.ACCENT3 = "#E0C3FC"  
@@ -326,7 +329,8 @@ if GUI_AVAILABLE:
                 self.SUCCESS = "#34d399" 
                 self.INFO = "#00BFFF" 
                 self.WARN = "#fbbf24" 
-                self.ERROR = "#f87171" 
+                self.ERROR = "#f87171"
+                self.DEBUG = "#FFC800" 
                 self.ACCENT = "#22d3ee" 
                 self.ACCENT2 = "#60a5fa" 
                 self.ACCENT3 = "#a78bfa"
@@ -589,7 +593,7 @@ if GUI_AVAILABLE:
             self.table.setHorizontalHeaderLabels(headers)
 
         def append_log(self, level: str, line: str):
-            color = {"SUCCESS": self.SUCCESS, "INFO": self.INFO, "WARN": self.WARN, "ERROR": self.ERROR}.get(level, self.INFO)
+            color = {"SUCCESS": self.SUCCESS, "INFO": self.INFO, "WARN": self.WARN, "ERROR": self.ERROR, "DEBUG": self.DEBUG}.get(level, self.INFO)
             ts = datetime.now().strftime("%I:%M:%S %p")
             html = f'<span style="color:{self.TIME_COLOR}">[{ts}]</span> <span style="color:{color}">[{level}]</span> {line}'
             self.logs.append(html)
