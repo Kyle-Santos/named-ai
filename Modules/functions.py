@@ -390,6 +390,7 @@ def resize_mfn(image_bytes: bytes) -> bytes:
     except Exception as e:
         print(f"[ERROR] Resized failed: {e}")
         return image_bytes #fallback
+    
 def resize_facenet(image_bytes: bytes) -> bytes:
     try:
         img = Image.open(BytesIO(image_bytes))
@@ -404,6 +405,7 @@ def resize_facenet(image_bytes: bytes) -> bytes:
     except Exception as e:
         print(f"[ERROR] Resized failed: {e}")
         return image_bytes #fallback
+    
 def resize_insightface(image_bytes: bytes) -> bytes:
     try:
         img = Image.open(BytesIO(image_bytes))

@@ -391,8 +391,8 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
         from datetime import datetime
         sent_time = datetime.now()
         log(
-            "ERROR",
-            f"Interest '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+            "DEBUG",
+            f"Interest '{name}' received at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
         )
 
         update_CS_timestamp(name)
@@ -406,8 +406,8 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
         from datetime import datetime
         sent_time = datetime.now()
         log(
-            "ERROR",
-            f"Interest '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+            "DEBUG",
+            f"Data '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
         )
 
         update_metrics("data_packets_sent", len(response))
@@ -627,8 +627,8 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             from datetime import datetime
             sent_time = datetime.now()
             log(
-                "ERROR",
-                f"Interest '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+                "DEBUG",
+                f"Data '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
             )
 
         return cleanup_flags["delete_pit"]
@@ -787,7 +787,7 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
                        SEND_QUEUE, cleanup_flags):
     """Process Named Function Networking request"""
     log("INFO", f"Starting In-Network Function processing for '{name}', waiting_for = '{waiting_for_name}'")
-    log("INFO", f"Assembling In-Network Function workflow: funcs={pit_entry.get('funcs', [])}")
+    log("INFO", f"Assembling workflow: funcs={pit_entry.get('funcs', [])}")
     # Save the original data
     if lookup_content(waiting_for_name) is None and waiting_for_name not in CS:
         save_data_to_file(waiting_for_name, full_data)

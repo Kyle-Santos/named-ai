@@ -681,7 +681,7 @@ if GUI_AVAILABLE:
                     from datetime import datetime
                     sent_time = datetime.now()
                     self.append_log(
-                        "ERROR",
+                        "DEBUG",
                         f"Interest '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
                     )
 
