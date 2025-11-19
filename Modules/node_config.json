@@ -24,12 +24,12 @@
                 "/dlsu/goks": { "face": "face1", "port": 9016 },
                 "/dlsu/andrew": { "face": "face2", "port": 9021 },
                 "/dlsu/velasco": { "face": "face3", "port": 9026 }
-            },
+            },  
             "storage": "nfn_nodes/dlsu/",
             "functions": ["orchestrate", "recognize"],
             "node_functions_mapping": {
-                "/dlsu/goks": ["detect", "resize"],
-                "/dlsu/andrew": ["mfn_embedding", "grayscale", "resize"],
+                "/dlsu/goks": ["detect", "resize_facenet", "resize_mfn", "resize_insightface"],
+                "/dlsu/andrew": ["mfn_embedding", "grayscale", "resize_mfn"],
                 "/dlsu/velasco": ["insightface_embedding", "facenet_embedding", "normalize"]
             }
         },
@@ -48,8 +48,7 @@
                 "/dlsu/velasco": { "face": "face2", "port": 9027 },
                 "/dlsu/goks/cam": { "face": "face3", "port": 9031 }
             },
-            "storage": "nfn_nodes/goks/",
-            "functions": ["detect", "resize"]
+            "storage": "nfn_nodes/goks/"
         },
 
         {
@@ -64,8 +63,7 @@
                 "/dlsu/goks": { "face": "face1", "port": 9017 },
                 "/dlsu/velasco": { "face": "face2", "port": 9028 }
             },
-            "storage": "nfn_nodes/andrew/",
-            "functions": ["mfn_embedding", "grayscale", "resize"]
+            "storage": "nfn_nodes/andrew/"
         },
 
         {
@@ -80,8 +78,7 @@
                 "/dlsu/goks": { "face": "face1", "port": 9018 },
                 "/dlsu/andrew": { "face": "face2", "port": 9023 }
             },
-            "storage": "nfn_nodes/velasco/",
-            "functions": ["insightface_embedding", "facenet_embedding", "normalize"]
+            "storage": "nfn_nodes/velasco/"
         },
 
         {

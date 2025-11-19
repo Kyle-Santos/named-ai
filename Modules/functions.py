@@ -47,6 +47,9 @@ FACEBANKS = {
 def get_function(func_name: str):
     """Retrieve function by name."""
     functions_map = {
+        "resize_facenet": resize_facenet,
+        "resize_insightface": resize_insightface,
+        "resize_mfn": resize_mfn,
         "detect": detect,
         "grayscale": grayscale,
         "orchestrate": orchestrate,
@@ -188,14 +191,12 @@ def normalize(image_bytes: bytes) -> bytes:
 
 def orchestrate(name: str, model, PIT, functions_mapping) -> str:
     """Build an NFN Interest string for the requested recognition pipeline."""
-    global CHOSEN_MODEL
     model = (model or "").lower()
-    CHOSEN_MODEL = model
 
     model_pipelines = {
-        "insightface": ["resize", "normalize", "insightface_embedding"],
-        "facenet": ["detect", "resize", "normalize", "facenet_embedding"],
-        "mobilefacenet": ["detect","resize","normalize", "grayscale", "mfn_embedding"],
+        "insightface": ["resize_insightface", "normalize", "insightface_embedding"],
+        "facenet": ["detect", "resize_facenet", "normalize", "facenet_embedding"],
+        "mobilefacenet": ["detect","resize_mfn", "grayscale", "normalize", "mfn_embedding"],
     }
 
     # Priority tiers:

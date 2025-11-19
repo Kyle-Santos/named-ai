@@ -8,13 +8,12 @@ import time
 import threading
 
 LOGS = []
-# GUI_QUEUE = None
 GUI_CALLBACK = None
 
 def log(level, message, path=""):
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     level_upper = level.upper()
-    if level_upper not in ["INFO", "WARN", "ERROR", "SUCCESS"]:
+    if level_upper not in ["INFO", "WARN", "ERROR", "SUCCESS", "DEBUG"]:
         level_upper = "INFO"  # default to INFO if invalid level
     entry = {"level": level_upper, "message": message, "path": path, "timestamp": timestamp}
     LOGS.append(entry)
@@ -184,11 +183,8 @@ METRICS = {
     "total_data_bytes_received_per_name": 0, # data bytes per name
     
     "ave_RTT": 0.0,  # in milliseconds
-
-    "PDR": 0.0,
-    
+    "PDR": 0.0, 
     "latency": 0.0,
-
     "throughput": 0.0,
     "test_start_time": 0.0,
 }
@@ -204,18 +200,11 @@ def get_metrics():
     """Retrieve current metrics."""
     # Calculate PDR
     interests_sent = METRICS["interests_sent"]
-    data_received = METRICS["data_packets_received"]
+
     if interests_sent > 0:
-        METRICS["PDR"] = data_received / interests_sent * 100.0
+        METRICS["PDR"] = (interests_sent - METRICS["failed_packets"]) / interests_sent * 100.0
     else:
         METRICS["PDR"] = 0.0
-
-    # Calculate throughput (bytes/sec)
-    data_bytes = METRICS["total_data_bytes_received"]
-
-    # Calculate latency 
-    METRICS["latency"] = 0.0
-
 
     return METRICS 
 
