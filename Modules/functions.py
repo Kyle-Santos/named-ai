@@ -26,10 +26,15 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ML-m
 from mobilefacenet import MobileFaceNet
 import torchvision.transforms as transforms
 
-
-TARGET_SIZE = (112, 112)  # Width x Height - Standard size for MobileFaceNet
+# TARGET_SIZE = (112, 112)  # Width x Height - Standard size for MobileFaceNet
 # TARGET_SIZE = (640, 640)  # Width x Height - Standard size for INSIGHT FACE
 # TARGET_SIZE = (160, 160) # Width x Height - Standard size for FaceNet
+
+TARGET_SIZE = {
+    "insightface": (640, 640),
+    "facenet": (160, 160),
+    "mobilefacenet": (112, 112),
+}
 CHOSEN_MODEL = None
 
 FACEBANKS = {
@@ -70,7 +75,7 @@ def resize(image_bytes: bytes) -> bytes:
         format = img.format or "JPG"
 
         # Resize
-        resized_img = img.resize(TARGET_SIZE, Image.Resampling.LANCZOS)
+        resized_img = img.resize(TARGET_SIZE[CHOSEN_MODEL], Image.Resampling.LANCZOS)
 
         # Encode back to bytes
         buf = BytesIO()

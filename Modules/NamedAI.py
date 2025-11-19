@@ -435,15 +435,15 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
         # /dlsu/goks/detect() -> detect()
         requested_name = name[len(NODE_NAME)+1:]
         print(requested_name)
-        # NFN case
+        # in-network function case
         if re.search(r"^[a-zA-Z_]+\(.*\)", requested_name):
             # the NFN is for this node
             base_name, funcs = parse_nfn_expression(requested_name)
-            log("INFO", f"Parsed NFN Interest: base_name='{base_name}', funcs={funcs}")
+            log("INFO", f"Parsed In-Network Function Interest: base_name='{base_name}', funcs={funcs}")
 
             if "recognize" in funcs:
                 model, recognize = funcs # ['openface', 'recognize']
-                log("INFO", f"Received NFN Interest for recognition pipeline: '{name}'")
+                log("INFO", f"Received In-Network Function Interest for recognition pipeline: '{name}'")
                 func = FUNCTIONS_TABLE["orchestrate"]
                 interest_expr = func(base_name, model, PIT, NODE_FUNCTIONS_MAPPING)
                 log("INFO", f"Orchestrated Interest Expression: '{interest_expr}'")
@@ -663,7 +663,7 @@ def find_pit_entry(name):
             pit_entry = entry
             waiting_for_name = name
             original_name = entry_name
-            log("INFO", f"Data for '{waiting_for_name}' is awaited by NFN Interest '{original_name}'")
+            log("INFO", f"Data for '{waiting_for_name}' is awaited by Interest '{original_name}'")
             break
 
     return pit_entry, original_name, waiting_for_name
@@ -785,20 +785,20 @@ def parse_nfn_expression(expr: str):
     # Match function pattern: func(arg)
     match = re.match(r"(\w+)\((.+)\)", expr)
     if not match:
-        raise ValueError(f"Invalid NFN expression: {expr}")
+        raise ValueError(f"Invalid In-Network Function expression: {expr}")
 
     func, arg = match.groups()
     base_name, funcs = parse_nfn_expression(arg)  # recurse inside
-    # log("INFO", f"Parsing NFN expression: {expr}")
-    # log("INFO", f"NFN parse result: base='{base_name}', funcs = {funcs}")
+    # log("INFO", f"Parsing In-Network Function expression: {expr}")
+    # log("INFO", f"In-Network Function parse result: base='{base_name}', funcs = {funcs}")
     return base_name, funcs + [func]
 
 
 def process_nfn_request(name, waiting_for_name, full_data, pit_entry, 
                        SEND_QUEUE, cleanup_flags):
     """Process Named Function Networking request"""
-    log("INFO", f"Starting NFN processing for '{name}', waiting_for = '{waiting_for_name}'")
-    log("INFO", f"Assembling NFN workflow: funcs={pit_entry.get('funcs', [])}")
+    log("INFO", f"Starting In-Network Function processing for '{name}', waiting_for = '{waiting_for_name}'")
+    log("INFO", f"Assembling In-Network Function workflow: funcs={pit_entry.get('funcs', [])}")
     # Save the original data
     if lookup_content(waiting_for_name) is None and waiting_for_name not in CS:
         save_data_to_file(waiting_for_name, full_data)
@@ -806,8 +806,9 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
 
     # Apply functions in the pipeline
     processed_data = apply_function_pipeline(name, full_data, pit_entry)
-    log("INFO", f"NFN pipeline complete for '{name}', size={len(processed_data)} bytes")
-    log("INFO", f"Building final NFN Data packet for '{name}'")
+    log("INFO", f"In-Network Function pipeline complete for '{name}', size={len(processed_data)} bytes")
+    # log("INFO", f"Building final In-Network Function Data packet for '{name}'")
+
     # Send processed results back
     response = build_data_packet(name, processed_data)
 
@@ -820,7 +821,7 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
             ))
     
     update_metrics("data_packets_sent", len(response))
-    log("INFO", f"Processed NFN '{name}' and sent to {pit_entry['interface']}")
+    log("INFO", f"Processed In-Network Function '{name}' and sent to {pit_entry['interface']}")
 
     cleanup_flags["delete_pit"] = True
     return processed_data

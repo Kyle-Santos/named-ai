@@ -349,6 +349,9 @@ if GUI_AVAILABLE:
             self._setup_ui()
             self._start_backend()
             
+            # Set GUI to 1/4 of 1920x1080
+            self.resize(1920 // 2, 1080 // 2)  # 960x540
+
             # Refresh timer
             self.timer = QTimer(self)
             self.timer.timeout.connect(self.refresh_stats)
