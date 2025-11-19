@@ -602,9 +602,8 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
         if processed_data is not None and cleanup_flags["delete_pit"]:
             save_data_to_file(original_name, processed_data)
 
-            if recognize in original_name:
-                log("INFO", f"Recognition result for '{original_name}':")
-                log("INFO", processed_data.decode())
+            if "recognize" in original_name:
+                log("SUCCESS", f"Recognition result for '{original_name.split('/')[-1].rstrip(')')}': {processed_data.decode()}")
             # log("INFO", f"Saved processed data for '{original_name}'")
 
         # Cleanup after all processing

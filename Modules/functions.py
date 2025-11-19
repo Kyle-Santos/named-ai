@@ -387,7 +387,7 @@ def recognize(data_bytes: bytes):
         if confidence < threshold:
             best_label = "Unknown"
 
-        result = {"label": best_label, "confidence": confidence}
+        result = {"label": best_label, "confidence": f"{round(confidence * 100, 2)}%"}
         return json.dumps(result).encode('utf-8')
     except Exception as e:
         print(f"[ERROR] Recognition failed: {e}")
