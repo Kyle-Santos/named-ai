@@ -46,6 +46,7 @@ def load_node_config(config_path: str, node_name: str):
     NN.NODE_FUNCTIONS_MAPPING = node_config.get("node_functions_mapping", {})
     
     functions_list = dlsu["node_functions_mapping"].get(NN.NODE_NAME, []) 
+    print(f"Functions for {NN.NODE_NAME}: {functions_list}")
     for func_name in functions_list:
         if func_name == "detect":
             functions.load_mtcnn()
@@ -58,13 +59,15 @@ def load_node_config(config_path: str, node_name: str):
 
         if func_name == "facenet_embedding":
             functions.load_facenet()
+            print("Facenet model loaded.")
 
         if func_name == "mfn_embedding":
             functions.load_mfn()
+            print("MobileFaceNet model loaded.")
             
         NN.FUNCTIONS_TABLE[func_name] = functions.get_function(func_name)
 
-    print(NN.FUNCTIONS_TABLE)
+    # print(NN.FUNCTIONS_TABLE)
 
     return node_config
 

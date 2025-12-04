@@ -1,28 +1,21 @@
 mtcnn
 pillow
 tensorflow
-torch
-torchvision
 numpy
 scikit-learn  # for evaluation metrics
 matplotlib    # for visualization
 PyQt5
 
 # for ML Processing
-opencv-python 
-onnxruntime
-insightface
 
 #arcface
-insightface 
-onnxruntime 
+# insightface 
+# onnxruntime 
 opencv-python
 
 #facenet
 facenet-pytorch 
 mtcnn 
-torch 
-torchvision
 
 #mfn
 torch 

@@ -21,9 +21,10 @@
                 { "face": "face3", "port": 9009 }
             ],
             "FIB": {
-                "/dlsu/goks": { "face": "face1", "port": 9016 },
-                "/dlsu/andrew": { "face": "face2", "port": 9021 },
-                "/dlsu/velasco": { "face": "face3", "port": 9026 }
+                "/dlsu/goks": { "face": "face0", "port": 9016 },
+                "/dlsu/andrew": { "face": "face1", "port": 9021 },
+                "/dlsu/velasco": { "face": "face2", "port": 9026 },
+                "user": { "face": "face3", "port": 9001 }
             },  
             "storage": "nfn_nodes/dlsu/",
             "node_functions_mapping": {
