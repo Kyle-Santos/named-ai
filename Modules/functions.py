@@ -424,7 +424,7 @@ def resize_insightface(image_bytes: bytes) -> bytes:
 
 def load_mfn():
     global mfn_model
-    filename = "weights/mobilefacenet.pt"
+    filename = "../ML-models/model3_mfn/weights/mobilefacenet.pt"
     mfn_model = MobileFaceNet()
     mfn_model.load_state_dict(torch.load(filename, map_location="cpu"))
     mfn_model.eval()

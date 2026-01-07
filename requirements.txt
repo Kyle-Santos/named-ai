@@ -9,8 +9,8 @@ PyQt5
 # for ML Processing
 
 #arcface
-# insightface 
-# onnxruntime 
+insightface 
+onnxruntime 
 opencv-python
 
 #facenet
