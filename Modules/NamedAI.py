@@ -258,7 +258,7 @@ def store_interest(name, face, addr, funcs=None, waiting_for=None):
             }
             log("SUCCESS", f"Stored Interest '{name}' in PIT")
 
-def store_data(name, path):
+def store_data(name, data):
     """Store data in the Content Store (CS)."""
     if len(CS) >= CS_SIZE:
         # Evict the oldest entry
@@ -266,7 +266,7 @@ def store_data(name, path):
         CS.pop(oldest_name)
         log("SUCCESS", f"Evicted '{oldest_name}' to maintain CS capacity")
 
-    CS[name] = {"path": path, "timestamp": time.time()}
+    CS[name] = {"data": data, "timestamp": time.time()}
     log("SUCCESS", f"Cached '{name}' into CS (size: {len(CS)})")
 
 def lookup_content(name):
@@ -295,8 +295,12 @@ def initialize_content_store(storage_path):
             full_path = os.path.join(STORAGE_PATH, filename)
             if os.path.isfile(full_path):
                 content_name = "/" + filename.replace('_', '/')
-                store_data(content_name, full_path)
-                log("INFO", f"Cached '{content_name}' from storage")
+                # Read file contents into memory
+                with open(full_path, "rb") as f:
+                    file_data = f.read()
+                store_data(content_name, file_data)
+                log("INFO", f"Cached '{content_name}' from storage ({len(file_data)} bytes)")
+
 
 def clear_content_store():
     """Delete all entries in the Content Store (CS) and clear all stored files."""
@@ -396,7 +400,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
         )
 
         update_CS_timestamp(name)
-        bytes = process_name_request(cached_data["path"])
+        bytes = cached_data["data"]
         response = build_data_packet(name, bytes)
 
         SEND_QUEUE.put((sock, addr, response))
@@ -445,7 +449,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
             cached_data = lookup_content(base_name)
             if cached_data:
                 update_CS_timestamp(base_name)
-                bytes = process_name_request(cached_data["path"])
+                bytes = cached_data["data"]
                 response = build_data_packet(base_name, bytes)
                 log("INFO", f"Cached content found for base name '{base_name}'")
                 for resp in response:
@@ -741,22 +745,13 @@ def save_data_to_file(name, data_bytes):
         filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_')) + ".jpg"
 
     if name not in CS:
-        store_data(name, filename)
+        store_data(name, data_bytes)
     else:
         update_CS_timestamp(name)
 
     with open(filename, "wb") as f:
         f.write(data_bytes)
     log("SUCCESS", f"Data written to {filename}")
-
-
-def process_name_request(name) -> bytes:
-    # Read file contents as raw bytes
-    log("INFO", f"Reading content from filesystem: {name}")
-    with open(name, "rb") as f:
-        file_bytes = f.read()
-    log("INFO", f"Read {len(file_bytes)} bytes from '{name}'")
-    return file_bytes
 
 
 def parse_nfn_expression(expr: str):
