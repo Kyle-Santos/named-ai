@@ -9,14 +9,14 @@ from mtcnn.mtcnn import MTCNN
 import numpy as np
 from PIL import Image
 from io import BytesIO
-import cv2
 
 # for INSIGHTFACE
+import cv2
 import torch
 import json
 from insightface.app import FaceAnalysis
 
-# for facenet
+#for facenet
 import joblib
 from collections import Counter
 from facenet_pytorch import InceptionResnetV1
@@ -293,9 +293,9 @@ def _is_node_busy(node, func, PIT):
 # FACEBANK MANAGEMENT
 def load_facebank():
     facebanks = {
-        "insightface": "facebanks/facebank_insightface.pt",
-        "facenet": "facebanks/facebank_facenet.pkl",
-        "mobilefacenet": "facebanks/facebank_mobilefacenet1.pkl",
+        "insightface": "facebanks\\facebank_insightface.pt",
+        "facenet": "facebanks\\facebank_facenet.pkl",
+        "mobilefacenet": "facebanks\\facebank_mobilefacenet1.pkl",
     }
 
     for model, path in facebanks.items():
@@ -325,8 +325,6 @@ def recognize(data_bytes: bytes):
     global CHOSEN_MODEL
     k = 3  # top-k  
     threshold = 0.65  # similarity threshold
-
-    print(f"[INFO] Using facebank for model: {FACEBANKS[CHOSEN_MODEL.lower()]}")
     facebank_embeddings = FACEBANKS[CHOSEN_MODEL.lower()]["embeddings"] 
     facebank_names = FACEBANKS[CHOSEN_MODEL.lower()]["names"]
 
@@ -424,28 +422,12 @@ def resize_insightface(image_bytes: bytes) -> bytes:
         return image_bytes #fallback
 
 
-
 def load_mfn():
     global mfn_model
-    try:
-        print("[INFO] Loading MobileFaceNet model...")
-
-        # Build absolute path to mobilefacenet.pt
-        weights_path = os.path.join(
-            os.path.dirname(__file__),   # current script folder
-            "../ML-models/model3_mfn/weights/mobilefacenet.pt"  # relative path to weights
-        )
-        weights_path = os.path.abspath(weights_path)
-
-        if not os.path.exists(weights_path):
-            raise FileNotFoundError(f"MobileFaceNet weights not found at {weights_path}")
-        
-        mfn_model = MobileFaceNet()
-        mfn_model.load_state_dict(torch.load(weights_path, map_location="cpu"))
-        mfn_model.eval()
-    except Exception as e:
-        print(f"[ERROR] Could not load MobileFaceNet model: {e}")
-        return
+    filename = "weights/mobilefacenet.pt"
+    mfn_model = MobileFaceNet()
+    mfn_model.load_state_dict(torch.load(filename, map_location="cpu"))
+    mfn_model.eval()
 
 def mfn_embedding(image_bytes: bytes) -> bytes:
     global mfn_model
@@ -493,29 +475,10 @@ def mfn_embedding(image_bytes: bytes) -> bytes:
 
 
 def load_facenet():
-    # initialize model
+    #initialize model
     global facenet_model
-    try:
-        print("[INFO] Loading FaceNet model...")
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-        weights_path = os.path.join(
-            os.path.dirname(__file__),   # current script folder
-            "../ML-models/model2_facenet/weights/vggface2.pt"  # relative path to weights
-        )
-
-        if not os.path.exists(weights_path):
-            raise FileNotFoundError(f"FaceNet weights not found at {weights_path}")
-
-        facenet_model = InceptionResnetV1(pretrained=None).to(device).eval()
-
-        state = torch.load(weights_path, map_location=device)
-        facenet_model.load_state_dict(state, strict=False)
-
-
-    except Exception as e:
-        print(f"[ERROR] Could not load FaceNet model: {e}")
-        return
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    facenet_model = InceptionResnetV1(pretrained='vggface2').eval().to(device)
 
 def facenet_embedding(image_bytes: bytes) -> bytes:
     global facenet_model, mt
@@ -609,4 +572,3 @@ def insightface_embedding(image_bytes: bytes) -> bytes:
 
 # interest_name = orchestrate("/dlsu/goks/cam/capture1.jpg", "insightface", {}, node_functions_mapping)
 # print("Generated Interest Name:", interest_name)
-
