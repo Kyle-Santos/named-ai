@@ -54,9 +54,9 @@ def load_node_config(config_path: str, node_name: str):
         if func_name == "recognize":
             functions.load_facebank()
 
-        if func_name == "insightface_embedding":
-            functions.load_insightface()
-            print("InsightFace model loaded.")
+        # if func_name == "insightface_embedding":
+        #     functions.load_insightface()
+        #     print("InsightFace model loaded.")
 
         if func_name == "facenet_embedding":
             functions.load_facenet()
@@ -77,7 +77,22 @@ def create_interfaces(node_config):
     return NN.create_interface(node_config["interfaces"])
 
 
-def processor_thread(gui_callback=None):
+GUI_CALLBACK = None
+def log(level, message, path=""):
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    level_upper = level.upper()
+    if level_upper not in ["INFO", "WARN", "ERROR", "SUCCESS", "DEBUG"]:
+        level_upper = "INFO"  # default to INFO if invalid level
+
+    # if GUI_CALLBACK:
+    if GUI_CALLBACK and level_upper not in ["INFO", "SUCCESS"]:
+        GUI_CALLBACK(level_upper, message)
+    # GUI_QUEUE.put((level, message))   # put into thread-safe queue
+
+    print(f"\n[{timestamp}] [{level_upper}] {message}" + (f" {path}" if path else ""))
+
+
+def processor_thread():
     """
     Global packet processor - processes all packets from the queue.
     This is a single thread that handles all Interest and Data processing.
@@ -97,14 +112,12 @@ def processor_thread(gui_callback=None):
             if err:
                 msg = f"[{face}] {err}"
                 print(msg)
-                if gui_callback:
-                    gui_callback("ERROR", msg)
+                log("ERROR", msg)
                 continue
 
             msg = f"Processing {parsed['type']} packet \"{parsed['name']}\" from {face} ({addr})"
             print(f"\n{msg}")
-            if gui_callback:
-                gui_callback("INFO", msg)
+            log("INFO", msg)
             
             try:
                 # Process based on packet type
@@ -117,27 +130,24 @@ def processor_thread(gui_callback=None):
             except Exception as e:
                 msg = f"[Processor] Error processing packet: {e}"
                 print(msg)
-                if gui_callback:
-                    gui_callback("ERROR", msg)       
+                log("ERROR", msg)       
         except queue.Empty:
             # Queue empty - do cleanup tasks
             continue      
         except KeyError as e:
             msg = f"[Processor] PIT entry vanished during processing: {e}"
             print(msg)
-            if gui_callback:
-                gui_callback("ERROR", msg)
+            log("ERROR", msg)
         except Exception as e:
             msg = f"[Processor] Critical error: {e}"
             print(msg)
-            if gui_callback:
-                gui_callback("ERROR", msg)
+            log("ERROR", msg)
             import traceback
             traceback.print_exc()  # Print full stack trace
             time.sleep(0.1)
 
 
-def receiver(face, entry, gui_callback=None):
+def receiver(face, entry):
     sock = entry["sock"]
     sock.settimeout(1.0)  # Non-blocking with timeout
 
@@ -147,8 +157,7 @@ def receiver(face, entry, gui_callback=None):
 
             msg = f"[{face}] Received a packet from {addr}"
             print(msg)
-            if gui_callback:
-                gui_callback("INFO", msg)
+            log("INFO", msg)
             
             # Queue packet for processing
             PROCESSOR_QUEUE.put({
@@ -163,12 +172,11 @@ def receiver(face, entry, gui_callback=None):
         except Exception as e:
             msg = f"[Receiver {face}] Error: {e}"
             print(msg)
-            if gui_callback:
-                gui_callback("ERROR", msg)
+            log("ERROR", msg)
             time.sleep(0.1)
 
 
-def sender(gui_callback=None):
+def sender():
     while True:
         task = SEND_QUEUE.get()
 
@@ -180,34 +188,36 @@ def sender(gui_callback=None):
         except Exception as e:
             msg = f"[Sender] Error: {e}"
             print(msg)
-            if gui_callback:
-                gui_callback("ERROR", msg)
+            log("ERROR", msg)
 
 
 def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
     """Main node runner with separated receiver and processor threads."""
     NN.GUI_CALLBACK = gui_callback
+    
+    global GUI_CALLBACK
+    GUI_CALLBACK = gui_callback
+
     time.sleep(1.0)
     node_config = load_node_config(config_path, node_name)
     interfaces = create_interfaces(node_config)
     
     msg = f"{NN.NODE_NAME} running with faces: {list(interfaces.keys())}"
     print(f"\033[92m{msg}\033[0m")
-    if gui_callback:
-        gui_callback("SUCCESS", msg)
+    log("SUCCESS", msg)
 
     threads = []
 
     # Start receiver threads
     for face, entry in interfaces.items():
-        t = threading.Thread(target=receiver, args=(face, entry, gui_callback), daemon=False, name=f"Receiver-{face}")
+        t = threading.Thread(target=receiver, args=(face, entry), daemon=False, name=f"Receiver-{face}")
         t.start()
         threads.append(t)
 
     # Start global processor thread - PROCESS ALL PACKETS
     t = threading.Thread(
         target=processor_thread,
-        args=(gui_callback,),
+        args=(),
         daemon=False,
         name="Processor"
     )
@@ -215,10 +225,10 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
     threads.append(t)
 
     # Start sender thread
-    threading.Thread(target=sender, args=(gui_callback,), daemon=False, name="Sender").start()
+    threading.Thread(target=sender, args=(), daemon=False, name="Sender").start()
 
     # Start PIT cleanup thread
-    threading.Thread(target=pit_cleanup_worker, args=(gui_callback,), daemon=False, name="PIT_Cleanup").start()
+    threading.Thread(target=pit_cleanup_worker, args=(), daemon=False, name="PIT_Cleanup").start()
 
     # Monitor threads
     def thread_monitor():
@@ -228,8 +238,7 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
                 if not t.is_alive():
                     msg = f"[CRITICAL] Thread {t.name} has died!"
                     print(msg)
-                    if gui_callback:
-                        gui_callback("ERROR", msg)
+                    log("ERROR", msg)
 
     monitor_thread = threading.Thread(target=thread_monitor, daemon=True, name="Monitor")
     monitor_thread.start()
@@ -247,7 +256,7 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
             print(f"Error clearing content store: {e}")
 
 
-def pit_cleanup_worker(gui_callback=None):
+def pit_cleanup_worker():
     """Background thread to periodically clean up expired PIT entries."""
     CLEANUP_INTERVAL = 5  # seconds
     
@@ -260,8 +269,7 @@ def pit_cleanup_worker(gui_callback=None):
             if expired_count > 0:
                 msg = f"[PIT Cleanup] Removed {expired_count} expired Interest(s)"
                 print(msg)
-                if gui_callback:
-                    gui_callback("INFO", msg)
+                log("INFO", msg)
             
             # Optional: Print PIT stats
             # stats = NN.get_pit_stats()
@@ -274,8 +282,7 @@ def pit_cleanup_worker(gui_callback=None):
         except Exception as e:
             msg = f"[PIT Cleanup] Error: {e}"
             print(msg)
-            if gui_callback:
-                gui_callback("ERROR", msg)
+            log("ERROR", msg)
 
 # GUI INTEGRATION
 
