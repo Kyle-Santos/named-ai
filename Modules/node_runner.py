@@ -681,6 +681,10 @@ if GUI_AVAILABLE:
                                 
                     _, dest_port = NN.lookup_fib(name)
                     SEND_QUEUE.put((NN.INTERFACES["face0"]["sock"], (NN.IP_ADDR, dest_port), [interest_packet]))
+                    
+                    # 10.0.0.106
+                    # SEND_QUEUE.put((NN.INTERFACES["face0"]["sock"], ("10.0.0.106", dest_port), [interest_packet]))
+                    
                     NN.update_metrics("interests_sent")
 
                     NN.store_interest(name, None, (NN.IP_ADDR, NN.INTERFACES["face0"]["port"]))

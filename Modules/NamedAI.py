@@ -63,7 +63,7 @@ def create_interface(interfaces):
         face = interface["face"]
         port = interface["port"]
 
-        sock = create_udp_socket(bind_port=port)
+        sock = create_udp_socket(bind_addr=IP_ADDR, bind_port=port)
 
         INTERFACES[face] = {
             "sock": sock,
@@ -77,6 +77,7 @@ def create_interface(interfaces):
 
 def send_packet(sock, addr, packet_bytes):
     """Send a packet to a specific address via UDP."""
+    log("DEBUG", f"Sending packet to {addr[0]}:{addr[1]}, Size: {len(packet_bytes)} bytes")
     sock.sendto(packet_bytes, addr)
 
 
