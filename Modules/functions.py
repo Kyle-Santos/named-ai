@@ -186,7 +186,7 @@ def orchestrate(name: str, model, PIT, functions_mapping) -> str:
     CHOSEN_MODEL = model
 
     model_pipelines = {
-        "insightface": ["resize_insightface", "normalize", "insightface_embedding"],
+        "insightface": ["resize_insightface","normalize", "insightface_embedding"],
         "facenet": ["detect", "resize_facenet", "facenet_embedding"],
         "mobilefacenet": ["detect","resize_mfn", "grayscale", "mfn_embedding"],
     }
