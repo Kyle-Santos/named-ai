@@ -18,7 +18,8 @@ def log(level, message, path=""):
     entry = {"level": level_upper, "message": message, "path": path, "timestamp": timestamp}
     LOGS.append(entry)
 
-    if GUI_CALLBACK:
+    # if GUI_CALLBACK:
+    if GUI_CALLBACK and level_upper not in ["INFO", "SUCCESS"]:
         GUI_CALLBACK(level_upper, message)
     # GUI_QUEUE.put((level, message))   # put into thread-safe queue
 
@@ -62,7 +63,7 @@ def create_interface(interfaces):
         face = interface["face"]
         port = interface["port"]
 
-        sock = create_udp_socket(bind_port=port)
+        sock = create_udp_socket(bind_addr=IP_ADDR, bind_port=port)
 
         INTERFACES[face] = {
             "sock": sock,
@@ -76,6 +77,7 @@ def create_interface(interfaces):
 
 def send_packet(sock, addr, packet_bytes):
     """Send a packet to a specific address via UDP."""
+    log("DEBUG", f"Sending packet to {addr[0]}:{addr[1]}, Size: {len(packet_bytes)} bytes")
     sock.sendto(packet_bytes, addr)
 
 
@@ -615,7 +617,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                 METRICS["ave_RTT"] = rtt * 1000  # in ms
             METRICS["ave_RTT"] = (METRICS["ave_RTT"] + rtt * 1000) / 2
             rtt_ms = rtt * 1000
-            log("INFO", f"RTT for '{original_name}': {rtt_ms:.4f}ms, Average RTT: {METRICS['ave_RTT']:.4f}ms")
+            log("DEBUG", f"RTT for '{original_name}': {rtt_ms:.4f}ms, Average RTT: {METRICS['ave_RTT']:.4f}ms")
 
             # Goodput
             data_kbytes = METRICS["total_data_bytes_received_per_name"] / 1024  # in KB
@@ -632,7 +634,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             sent_time = datetime.now()
             log(
                 "DEBUG",
-                f"Data '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+                f"Data '{name}' received at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
             )
 
         return cleanup_flags["delete_pit"]
