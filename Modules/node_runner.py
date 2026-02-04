@@ -54,9 +54,9 @@ def load_node_config(config_path: str, node_name: str):
         if func_name == "recognize":
             functions.load_facebank()
 
-        # if func_name == "insightface_embedding":
-        #     functions.load_insightface()
-        #     print("InsightFace model loaded.")
+        if func_name == "insightface_embedding":
+            functions.load_insightface()
+            print("InsightFace model loaded.")
 
         if func_name == "facenet_embedding":
             functions.load_facenet()
@@ -307,14 +307,15 @@ if GUI_AVAILABLE:
         def flush(self):
             pass
 
-    class NodeMonitor(QWidget):
+    class  NodeMonitor(QWidget):
         log_signal = pyqtSignal(str, str)  # level, line
 
-        def __init__(self, start_mode: str, node_name: str):
+        def __init__(self, start_mode: str, node_name: str, auto_send: bool):
             super().__init__()
             self.start_mode = start_mode
             self.node_name = node_name
             self.current_table = "pit"  # Default to PIT table
+            self.auto_send_packets_gui = auto_send
 
             # Determine colors based on node type
             node_lower = self.node_name.lower()
@@ -628,6 +629,51 @@ if GUI_AVAILABLE:
             t = threading.Thread(target=backend_wrapper, daemon=False)
             t.start()
 
+            # Auto-send packets via GUI command handler if specified
+            if hasattr(self, 'auto_send_packets_gui') and self.auto_send_packets_gui:
+                self.auto_send_interests()
+
+        def auto_send_interests(self):
+            """Automatically send interest packets using the GUI command handler"""
+            def send_delayed():
+                time.sleep(3)  # Wait for backend initialization
+                
+                packets = [
+                    "/dlsu/goks/cam/capture1.jpg",
+                    "/dlsu/goks/cam/capture2.jpg",
+                    "/dlsu/goks/cam/capture3.jpg",
+                    "/dlsu/goks/cam/capture4.jpg",
+                    "/dlsu/goks/cam/capture5.jpg",
+                    "/dlsu/goks/cam/capture6.jpg",
+                    "/dlsu/goks/cam/capture7.jpg",
+                    "/dlsu/goks/cam/capture8.jpg",
+                    "/dlsu/goks/cam/capture9.jpg",
+                    "/dlsu/goks/cam/capture10.jpg",
+                    "/dlsu/goks/cam/capture11.jpg",
+                    "/dlsu/goks/cam/capture12.jpg",
+                    "/dlsu/goks/cam/capture13.jpg",
+                    "/dlsu/goks/cam/capture14.jpg",
+                    "/dlsu/goks/cam/capture15.jpg"
+                ]
+
+                print(f"\033[96mGUI will auto-send {len(packets)} packets after initialization\033[0m")
+                self.append_log("INFO", f"Auto-sending {len(packets)} Interest packets...")
+                
+                for i, packet_name in enumerate(packets, 1):
+                    # Simulate user typing the command
+                    self.cmd.setText(f"send interest {packet_name}")
+                    self.append_log("DEBUG", f"[{i}/{len(packets)}] Queuing Interest: {packet_name}")
+                    
+                    # Trigger the command handler
+                    self.handle_command()
+                    
+                    # Small delay between packets
+                    time.sleep(0.5)
+                
+                self.append_log("SUCCESS", "All Interest packets sent!")
+            
+            # Run in a separate thread to avoid blocking GUI
+            threading.Thread(target=send_delayed, daemon=True, name="GUI-AutoSender").start()
 
         def quick_command(self, txt: str):
             if txt == "send interest":
@@ -859,8 +905,9 @@ if GUI_AVAILABLE:
 def main():
     ap = argparse.ArgumentParser(description="NDN Node Runner with GUI")
     ap.add_argument("--node", help="Run a node with this node_name (per node_config.json)")
-    ap.add_argument("--client", help="Run a client with this node_name (per node_config.json)"),
+    ap.add_argument("--client", help="Run a client with this node_name (per node_config.json)")
     # ap.add_argument("--gui", action="store_true", help="Launch with GUI monitor")
+    ap.add_argument("--auto-send", action="store_true", help="Automatically send default packets on startup")
     args = ap.parse_args()
 
     if (args.node is None) == (args.client is None):
@@ -875,6 +922,8 @@ def main():
         start_mode = "client"
         node_name = args.client
 
+    auto_send = True if args.auto_send else False
+
     # Launch with or without GUI
     if not GUI_AVAILABLE:
         print("ERROR: PyQt5 is not installed. Install it with: pip install PyQt5")
@@ -882,7 +931,8 @@ def main():
         return
     else: 
         app = QApplication(sys.argv)
-        win = NodeMonitor(start_mode, node_name)
+        win = NodeMonitor(start_mode, node_name, auto_send=auto_send)
+
         win.show()
         sys.exit(app.exec_())
 
