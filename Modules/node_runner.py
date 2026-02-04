@@ -632,6 +632,7 @@ if GUI_AVAILABLE:
             # Auto-send packets via GUI command handler if specified
             if hasattr(self, 'auto_send_packets_gui') and self.auto_send_packets_gui:
                 self.auto_send_interests()
+                NN.METRICS["test_start_time"] = time.time()
 
         def auto_send_interests(self):
             """Automatically send interest packets using the GUI command handler"""
@@ -639,16 +640,16 @@ if GUI_AVAILABLE:
                 time.sleep(3)  # Wait for backend initialization
                 
                 packets = [
-                    "/dlsu/goks/cam/capture1.jpg",
-                    "/dlsu/goks/cam/capture2.jpg",
-                    "/dlsu/goks/cam/capture3.jpg",
-                    "/dlsu/goks/cam/capture4.jpg",
-                    "/dlsu/goks/cam/capture5.jpg",
-                    "/dlsu/goks/cam/capture6.jpg",
-                    "/dlsu/goks/cam/capture7.jpg",
-                    "/dlsu/goks/cam/capture8.jpg",
-                    "/dlsu/goks/cam/capture9.jpg",
-                    "/dlsu/goks/cam/capture10.jpg",
+                    # "/dlsu/goks/cam/capture1.jpg",
+                    # "/dlsu/goks/cam/capture2.jpg",
+                    # "/dlsu/goks/cam/capture3.jpg",
+                    # "/dlsu/goks/cam/capture4.jpg",
+                    # "/dlsu/goks/cam/capture5.jpg",
+                    # "/dlsu/goks/cam/capture6.jpg",
+                    # "/dlsu/goks/cam/capture7.jpg",
+                    # "/dlsu/goks/cam/capture8.jpg",
+                    # "/dlsu/goks/cam/capture9.jpg",
+                    # "/dlsu/goks/cam/capture10.jpg",
                     "/dlsu/goks/cam/capture11.jpg",
                     "/dlsu/goks/cam/capture12.jpg",
                     "/dlsu/goks/cam/capture13.jpg",
@@ -817,8 +818,10 @@ if GUI_AVAILABLE:
                     names = {
                         "ave_RTT": "Average RTT (ms)",
                         "PDR": "Packet Delivery Ratio (%)",
+                        "throughput": "Throughput (kbs/s)",
+                        "goodput": "Goodput (kbs/s)",
                     }
-                    for key in ["ave_RTT", "PDR"]:
+                    for key in ["ave_RTT", "PDR", "throughput", "goodput"]:
                         display_name = names.get(key, key)
                         value = metrics.get(key, 0.0)
                         entries.append((display_name, f"{value:.2f}"))

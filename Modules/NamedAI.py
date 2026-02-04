@@ -177,18 +177,27 @@ def parse_packet(packet_bytes):
 METRICS = {
     "interests_sent": 0,
     "interests_received": 0,
-    "data_packets_received": 0,
+
+    "data_packets_received": 0, # total data packets received (including fragments)
+    "data_packets_to_receive": 0, # total data packets expected to be received
+    "data_packets_to_receive_buffer": {}, # buffer to track received packets for each name
     "data_packets_sent": 0,
+
     "failed_packets": 0,
+
     "total_data_bytes_received": 0,
     "total_data_overhead_bytes_received": 0,
-    "total_data_bytes_received_per_name": 0, # data bytes per name
+
+    "data_overhead_bytes_received_per_name": 0, 
+    "data_bytes_received_per_name": 0, # data bytes per name
     
     "ave_RTT": 0.0,  # in milliseconds
     "PDR": 0.0, 
     "latency": 0.0,
     "throughput": 0.0,
+    "goodput": 0.0,
     "test_start_time": 0.0,
+    "test_end_time": 0.0,
 }
 
 def update_metrics(metric_name, value=1):
@@ -201,13 +210,13 @@ def update_metrics(metric_name, value=1):
 def get_metrics():
     """Retrieve current metrics."""
     # Calculate PDR
-    interests_sent = METRICS["interests_sent"]
+    if not FRAG_BUFFER:
+        added_to_receive = sum(METRICS["data_packets_to_receive_buffer"].values()) 
+        METRICS["data_packets_to_receive_buffer"] = {}  # reset buffer after calculating total
+        update_metrics("data_packets_to_receive", added_to_receive)  # update total expected to receive
 
-    if interests_sent > 0:
-        METRICS["PDR"] = (interests_sent - METRICS["failed_packets"]) / interests_sent * 100.0
-    else:
-        METRICS["PDR"] = 0.0
-
+    if METRICS["data_packets_to_receive"] > 0:
+        METRICS["PDR"] = (METRICS["data_packets_received"] / METRICS["data_packets_to_receive"]) * 100.0
     return METRICS 
 
 
@@ -391,6 +400,9 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     name = packet["name"]
     update_metrics("interests_received")
 
+    if METRICS["test_start_time"] == 0.0:
+        METRICS["test_start_time"] = time.time()
+
     # First check Content Store
     cached_data = lookup_content(name)
     if cached_data:
@@ -533,10 +545,14 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
     frag_num = packet.get("frag_num")
     frag_total = packet.get("frag_total")
     with PIT_LOCK:
+        if name not in METRICS["data_packets_to_receive_buffer"]:
+            METRICS["data_packets_to_receive_buffer"][name] = frag_total if frag_total else 1
+
         update_metrics("data_packets_received")
         update_metrics("total_data_bytes_received", len(data))
         update_metrics("total_data_overhead_bytes_received", len(raw_packet))
-        update_metrics("total_data_bytes_received_per_name", len(data))
+        update_metrics("data_overhead_bytes_received_per_name", len(raw_packet))
+        update_metrics("data_bytes_received_per_name", len(data))
 
 
         # Find the relevant PIT entry
@@ -620,15 +636,28 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             log("DEBUG", f"RTT for '{original_name}': {rtt_ms:.4f}ms, Average RTT: {METRICS['ave_RTT']:.4f}ms")
 
             # Goodput
-            data_kbytes = METRICS["total_data_bytes_received_per_name"] / 1024  # in KB
-            overhead_data_kbytes = METRICS["total_data_overhead_bytes_received"] / 1024 # in KB
+            data_kbytes = METRICS["data_bytes_received_per_name"] / 1024  # in KB
+            overhead_data_kbytes = METRICS["data_overhead_bytes_received_per_name"] / 1024 # in KB
             log("INFO", f"Final Size of {original_name}: {data_kbytes:.2f} KB")
             log("INFO", f"Final Size with Overhead: {overhead_data_kbytes:.2f} KB")
-            METRICS["total_data_overhead_bytes_received"] = 0  # reset for next
-            METRICS["total_data_bytes_received_per_name"] = 0  # reset for next
-
+            METRICS["data_overhead_bytes_received_per_name"] = 0  # reset for next
+            METRICS["data_bytes_received_per_name"] = 0  # reset for next
             PIT.pop(original_name)
             log("INFO", f"Removed PIT entry for '{original_name}' after processing.")
+
+            if not PIT:
+                log("INFO", "PIT is now empty.")
+                METRICS["test_end_time"] = time.time()
+                elapsed_time = METRICS["test_end_time"] - METRICS["test_start_time"]
+                log("DEBUG", f"Test completed in {elapsed_time:.2f} seconds.")
+                average_throughput = METRICS["total_data_overhead_bytes_received"] / 1024 / elapsed_time if elapsed_time > 0 else 0.0
+                average_goodput = METRICS["total_data_bytes_received"] / 1024 / elapsed_time if elapsed_time > 0 else 0.0
+                METRICS["throughput"] = average_throughput  # in KB/s
+                METRICS["goodput"] = average_goodput  # in KB/s
+
+            # if original_name in METRICS["data_packets_to_receive_buffer"]:
+            #     update_metrics("data_packets_to_receive", METRICS["data_packets_to_receive_buffer"][original_name])
+            #     del METRICS["data_packets_to_receive_buffer"][original_name]
 
             from datetime import datetime
             sent_time = datetime.now()
