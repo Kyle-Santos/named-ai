@@ -14,7 +14,7 @@ from io import BytesIO
 import cv2
 import torch
 import json
-# from insightface.app import FaceAnalysis
+from insightface.app import FaceAnalysis
 
 #for facenet
 import joblib
