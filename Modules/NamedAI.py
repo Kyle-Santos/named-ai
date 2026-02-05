@@ -1,4 +1,3 @@
-import socket
 import struct
 import Packet_Structure as packetStruct
 import random
@@ -6,6 +5,7 @@ import re
 import os
 import time
 import threading
+import serial
 
 LOGS = []
 GUI_CALLBACK = None
@@ -30,61 +30,63 @@ def log(level, message, path=""):
 #########################
 # Communication Module  #
 #########################
-IP_ADDR = "127.0.0.1"
+# IP_ADDR = "127.0.0.1"
+SERIAL_INTERFACES = {}
+BAUD_RATE = 9600
 
-def set_ip_addr(ip_addr):
-    """Set the IP address for all interfaces (if needed)."""
-    global IP_ADDR
-    IP_ADDR = ip_addr
-
-def create_udp_socket(bind_addr=IP_ADDR, bind_port=9000):
-    """Create and bind a UDP socket for communication."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind((bind_addr, bind_port))
-    return sock
-
+def create_serial_connection(port):
+    ser = serial.Serial(port, BAUD_RATE, timeout=0.1)
+    time.sleep(2)  # XBee warmup
+    return ser
 
 def create_interface(interfaces):
     """
-    Given an interfaces list from the config, create UDP sockets for each face.
-
-    Args:
-        interfaces (list): Example:
-            [
-                {"face": "face0", "port": 9010},
-                {"face": "face1", "port": 9011}
-            ]
-        bind_ip (str): IP to bind (default: localhost)
-
-    Returns:
-        dict: { face: { "sock": socket, "face": face, "port": port } }
+    interfaces example from config:
+    [
+        {"face": "face0", "port": "COM10"},
+        {"face": "face1", "port": "COM11"}
+    ]
     """
     for interface in interfaces:
         face = interface["face"]
         port = interface["port"]
 
-        sock = create_udp_socket(bind_addr=IP_ADDR, bind_port=port)
+        ser = create_serial_connection(port)
 
-        INTERFACES[face] = {
-            "sock": sock,
+        SERIAL_INTERFACES[face] = {
+            "sock": ser,          # keep key name 'sock' so rest of code works
             "face": face,
             "port": port
         }
 
-        log("INFO", f"Created socket for {face} on {IP_ADDR}:{port}")
-    return INTERFACES
+        log("INFO", f"Opened XBee interface {face} on {port}")
+
+    return SERIAL_INTERFACES
 
 
 def send_packet(sock, addr, packet_bytes):
-    """Send a packet to a specific address via UDP."""
-    log("DEBUG", f"Sending packet to {addr[0]}:{addr[1]}, Size: {len(packet_bytes)} bytes")
-    sock.sendto(packet_bytes, addr)
+    """Send packet via XBee serial (addr unused but kept for compatibility)."""
+    try:
+        sock.write(packet_bytes + b"\n")  # delimiter for packet boundary
+        log("DEBUG", f"Sent {len(packet_bytes)} bytes over XBee")
+    except Exception as e:
+        log("ERROR", f"XBee send failed: {e}")
 
 
 def receive_packet(sock, buffer_size=4096):
-    """Receive a packet (blocking)."""
-    data, addr = sock.recvfrom(buffer_size)
-    return data, addr
+    """
+    Read one packet from XBee.
+    Uses newline as packet delimiter.
+    """
+    try:
+        line = sock.readline()
+        if line:
+            return line.strip(), "xbee"
+    except Exception as e:
+        log("ERROR", f"XBee receive failed: {e}")
+
+    raise TimeoutError  # mimic socket timeout behavior
+
 
 
 
@@ -210,7 +212,7 @@ def update_metrics(metric_name, value=1):
 def get_metrics():
     """Retrieve current metrics."""
     # Calculate PDR
-    if not FRAG_BUFFER:
+    if not FRAG_BUFFER :
         added_to_receive = sum(METRICS["data_packets_to_receive_buffer"].values()) 
         METRICS["data_packets_to_receive_buffer"] = {}  # reset buffer after calculating total
         update_metrics("data_packets_to_receive", added_to_receive)  # update total expected to receive
@@ -226,7 +228,7 @@ def get_metrics():
 ##################
 NODE_NAME = None
 STORAGE_PATH = ""
-INTEREST_LIFETIME = 30  # seconds
+INTEREST_LIFETIME = 20  # seconds
 
 INTERFACES = {}  # port -> face, sock, port 
 
@@ -382,6 +384,8 @@ def cleanup_expired_pit_entries():
 
         for name in expired_names:
             PIT.pop(name)
+            if name in FRAG_BUFFER:
+                del FRAG_BUFFER[name] 
         
     return len(expired_names)
 
@@ -917,7 +921,7 @@ def build_data_packet(name, data):
     return packets
 
 
-def fragment_data(data_bytes, max_payload=4000):
+def fragment_data(data_bytes, max_payload=80):
     """
     Splits data into fragments if > max_payload.
     Returns a list of fragments

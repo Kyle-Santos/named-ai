@@ -1,13 +1,13 @@
 {
-    "ip": "127.0.0.1",
+    "ip": "0.0.0.0",
     "nodes": [
         {
             "name": "user",
             "interfaces": [
-                { "face": "face0", "port": 9001 }
+                { "face": "face0", "port": "/dev/tty.usbserial-AI02Z6GL" }
             ],
             "FIB": {
-                "/dlsu": { "face": "face0", "port": 9009 }
+                "/dlsu/goks/cam": { "face": "face0", "port": "COM10" }
             },
             "storage": "client_node/storage/"
         },
