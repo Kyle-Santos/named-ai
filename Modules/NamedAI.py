@@ -418,7 +418,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
         update_CS_timestamp(name)
         bytes = cached_data["data"]
         response = build_data_packet(name, bytes)
-
+        update_metrics("data_total_sent") 
         SEND_QUEUE.put((sock, addr, response))
         log("INFO", f"Served '{name}' from CS to {addr}")
 
@@ -598,6 +598,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
 
                     # Cache if all fragments received
                     if len(FRAG_BUFFER[name]["frags"]) == frag_total:
+                        update_metrics("data_total_sent")
                         reassembled_data = reassemble_fragments(name, frag_total)
                         cleanup_flags["delete_pit"] = True            
                         processed_data = reassembled_data  # Return to be saved once

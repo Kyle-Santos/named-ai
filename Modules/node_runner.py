@@ -486,7 +486,7 @@ if GUI_AVAILABLE:
                 "interests_sent", "Interests Sent", self.SUCCESS
             )
             self.data_packets_sent_box = self._make_counter(
-                "data_packets_sent", "Data Sent", self.ACCENT
+                "data_total_sent", "Data Sent", self.ACCENT
             )
             self.failed_packets_box = self._make_counter(
                 "failed_packets", "Failed Packets", self.ERROR
@@ -504,7 +504,7 @@ if GUI_AVAILABLE:
                 "interests_received", "Interests Received", self.SUCCESS
             )
             self.data_packets_received_box = self._make_counter(
-                "data_packets_received", "Data Received", self.ACCENT
+                "data_total_received", "Data Received", self.ACCENT
             )
             self.total_data_bytes_received_box = self._make_counter(
                 "total_data_bytes_received", "Total KBs Received", self.ACCENT3
