@@ -2,14 +2,15 @@ import serial
 import time
 
 # === SERIAL PORT CONFIG ===
-PORT = "/dev/tty.usbserial-AI02Z6GL"   # Mac/Linux
+# PORT = "/dev/tty.usbserial-00000000"   # Mac/Linux
+PORT = "/dev/tty.usbserial-AI02Z6GL"
 # PORT = "COM10"                       # Windows example
 
 BAUD_RATE = 9600
 BYTESIZE = serial.EIGHTBITS
 PARITY = serial.PARITY_NONE
 STOPBITS = serial.STOPBITS_ONE
-TIMEOUT = 1  # seconds
+TIMEOUT = 0  # seconds
 
 def open_serial():
     ser = serial.Serial(
@@ -42,18 +43,20 @@ def main():
         # Enter AT command mode for XBee
         print("Entering AT mode...")
         time.sleep(1)
-        ser.write(b"+++")
-        time.sleep(1)
-        print(ser.read_all().decode())
+        for i in range(1, 6):
+            ser.write(b" Hello World! This is test file for testing the capability of the NamedAI protocol using Xbee Transceivers"
+            # b"Hello World! This is test file for testing the capability of the NamedAI protocol using Xbee Transceivers"
+            b"Hello World! This is test file for testing the capability of the NamedAI protocol using Xbee Transceivers\n" + str(i).encode())
+            time.sleep(0.01)
 
         # Example AT commands
-        send_command(ser, "AT")        # Check communication
-        send_command(ser, "ATVR")      # Firmware version
-        send_command(ser, "ATMY")      # Device address
-        send_command(ser, "ATDL")      # Destination address
+        # send_command(ser, "AT")        # Check communication
+        # send_command(ser, "ATVR")      # Firmware version
+        # send_command(ser, "ATMY")      # Device address
+        # send_command(ser, "ATDL")      # Destination address
 
-        # Exit AT mode
-        send_command(ser, "ATCN")
+        # # Exit AT mode
+        # send_command(ser, "ATCN")
 
         ser.close()
         print("Serial connection closed.")
