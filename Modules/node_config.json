@@ -1,13 +1,13 @@
 {
-    "ip": "0.0.0.0",
+    "ip": "127.0.0.1",
     "nodes": [
         {
             "name": "user",
             "interfaces": [
-                { "face": "face0", "port": "/dev/tty.usbserial-AI02Z6GL" }
+                { "face": "face0", "port": "/dev/tty.usbserial-AI02Z6GB" }
             ],
             "FIB": {
-                "/dlsu/goks/cam": { "face": "face0", "port": "COM10" }
+                "/dlsu/goks/cam": { "face": "face0", "port": "/dev/tty.usbserial-AI02Z6GL" }
             },
             "storage": "client_node/storage/"
         },
@@ -124,7 +124,7 @@
         {
             "name": "/dlsu/goks/cam",
             "interfaces": [
-                { "face": "face0", "port": 9031 }
+                { "face": "face0", "port": "/dev/tty.usbserial-AI02Z6GL" }
             ],
             "FIB": {
                 "/dlsu/goks": { "face": "face0", "port": 9019 }

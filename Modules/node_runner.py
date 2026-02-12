@@ -1,10 +1,13 @@
 # node_runner.py
 import os, sys, socket, json, time, threading, queue, argparse
+
+from torch import addr
 import NamedAI as NN
 import functions
 
 SEND_QUEUE = queue.Queue()
 PROCESSOR_QUEUE = queue.Queue()
+PACKET_QUEUE = queue.Queue()
 
 # -----------------------------
 # Define a root path for configs
@@ -34,7 +37,7 @@ def load_node_config(config_path: str, node_name: str):
     node_config = next(n for n in config["nodes"] if n["name"] == node_name)
     dlsu = next(n for n in config["nodes"] if n["name"] == "/dlsu")
 
-    NN.set_ip_addr(config.get("ip", "127.0.0.1"))
+    # NN.set_ip_addr(config.get("ip", "127.0.0.1"))
     
     NN.NODE_NAME = node_config["name"]
     NN.FIB = node_config.get("FIB", {})
@@ -94,86 +97,66 @@ def log(level, message, path=""):
 
 def processor_thread():
     """
-    Global packet processor - processes all packets from the queue.
-    This is a single thread that handles all Interest and Data processing.
+    Reads complete packets from circular buffer and processes them.
+    Each packet is delimited by preamble and postamble.
     """
     
     while True:
         try:
-            # Get packet from queue (with timeout to allow periodic cleanup)
-            packet_info = PROCESSOR_QUEUE.get(timeout=1.0)
+            packet, sock, face, entry = PACKET_QUEUE.get()
+            
+            print(packet)
 
-            raw_packet = packet_info["raw_packet"]
-            sock = packet_info["sock"]
-            face = packet_info["face"]
-            addr = packet_info["addr"]
-
-            parsed, err = NN.parse_packet(raw_packet)
+            # Parse the packet
+            parsed, err = NN.parse_packet(packet)
             if err:
-                msg = f"[{face}] {err}"
+                msg = f"Parse error: {err}"
                 print(msg)
                 log("ERROR", msg)
                 continue
-
-            msg = f"Processing {parsed['type']} packet \"{parsed['name']}\" from {face} ({addr})"
-            print(f"\n{msg}")
-            log("INFO", msg)
             
+            # You'll need to track face/sock/addr information
+            # This might require a separate metadata structure or per-face buffers
+            msg = f"Processing {parsed['type']} packet \"{parsed['name']}\""
+            # print(f"\n{msg}")
+            log("INFO", msg)
+
+
             try:
                 # Process based on packet type
-                if parsed["type"] == "interest":                
-                    # Process Interest
-                    NN.process_interest(parsed, addr, sock, SEND_QUEUE=SEND_QUEUE, interface=face)
-                elif parsed["type"] == "data":         
-                    # Process Data 
-                    NN.process_data(parsed, raw_packet, sock, SEND_QUEUE=SEND_QUEUE)
+                if parsed["type"] == "interest":
+                    NN.process_interest(parsed, addr=None, sock=sock, 
+                                      SEND_QUEUE=SEND_QUEUE, interface=None)
+                elif parsed["type"] == "data":
+                    NN.process_data(parsed, packet, sock=sock, 
+                                  SEND_QUEUE=SEND_QUEUE)
             except Exception as e:
                 msg = f"[Processor] Error processing packet: {e}"
                 print(msg)
-                log("ERROR", msg)       
-        except queue.Empty:
-            # Queue empty - do cleanup tasks
-            continue      
-        except KeyError as e:
-            msg = f"[Processor] PIT entry vanished during processing: {e}"
-            print(msg)
-            log("ERROR", msg)
+                log("ERROR", msg)
+                
         except Exception as e:
             msg = f"[Processor] Critical error: {e}"
             print(msg)
             log("ERROR", msg)
             import traceback
-            traceback.print_exc()  # Print full stack trace
+            traceback.print_exc()
             time.sleep(0.1)
 
 
 def receiver(face, entry):
     sock = entry["sock"]
-    sock.settimeout(1.0)  # Non-blocking with timeout
+    buf = [b""]  # mutable container so receive_packet can update it
 
     while True:
         try:
-            raw_packet, addr = NN.receive_packet(sock)
+            packet = NN.receive_packet(sock, buf)
+            if packet:
+                PACKET_QUEUE.put((packet, sock, face, entry))
 
-            msg = f"[{face}] Received a packet from {addr}"
-            print(msg)
-            log("INFO", msg)
-            
-            # Queue packet for processing
-            PROCESSOR_QUEUE.put({
-                "raw_packet": raw_packet,
-                "sock": sock,
-                "face": face,
-                "addr": addr
-            })
-        
-        except TimeoutError:
-            continue
         except Exception as e:
-            msg = f"[Receiver {face}] Error: {e}"
-            print(msg)
-            log("ERROR", msg)
-            time.sleep(0.1)
+            log("ERROR", f"[Receiver {face}] {e}")
+            # time.sleep(0.01)
 
 
 def sender():
@@ -184,7 +167,12 @@ def sender():
             sock, addr, response = task
             for resp in response:
                 NN.send_packet(sock, addr, resp)
-                time.sleep(0.01)  # slight delay to avoid UDP packet loss
+                time.sleep(0.05)  # slight delay to avoid UDP packet loss
+                # every 5 responses, add a longer delay to prevent overwhelming the network
+                if (response.index(resp) + 1) % 7 == 0:
+                    # log("INFO", f"Sent {response.index(resp)+1}/{len(response)} packets for {addr}")
+                    time.sleep(5)
+
         except Exception as e:
             msg = f"[Sender] Error: {e}"
             print(msg)
@@ -629,6 +617,13 @@ if GUI_AVAILABLE:
             t = threading.Thread(target=backend_wrapper, daemon=False)
             t.start()
 
+            # simulate receiving a packet after startup for demonstration
+            # time.sleep(5)
+            # # parsed_packet = {'type': 'interest', 'name': '/dlsu/goks/cam/txt6.txt', 'valid': True}
+            # parsed_packet = {'type': 'interest', 'name': '/txt6.txt', 'valid': True}
+            # parsed_packet = {'type': 'interest', 'name': '/cap17.jpg', 'valid': True}
+            # NN.process_interest(parsed_packet, addr=None, sock=NN.INTERFACES["face0"]["sock"], SEND_QUEUE=SEND_QUEUE, interface=None)
+
             # Auto-send packets via GUI command handler if specified
             if hasattr(self, 'auto_send_packets_gui') and self.auto_send_packets_gui:
                 self.auto_send_interests()
@@ -725,16 +720,17 @@ if GUI_AVAILABLE:
                     interest_packet = NN.build_interest_packet(name)
                     print(f"[DEBUG] Raw Interest Packet: {interest_packet}")
                     print(f"[DEBUG] Packet Size: {len(interest_packet)} bytes")
-                                
-                    _, dest_port = NN.lookup_fib(name)
-                    SEND_QUEUE.put((NN.INTERFACES["face0"]["sock"], (NN.IP_ADDR, dest_port), [interest_packet]))
+
+        
+                    # _, dest_port = NN.lookup_fib(name)
+                    SEND_QUEUE.put((NN.INTERFACES["face0"]["sock"], ("", ""), [interest_packet]))
                     
                     # 10.0.0.106
                     # SEND_QUEUE.put((NN.INTERFACES["face0"]["sock"], ("10.0.0.106", dest_port), [interest_packet]))
                     
                     NN.update_metrics("interests_sent")
 
-                    NN.store_interest(name, None, (NN.IP_ADDR, NN.INTERFACES["face0"]["port"]))
+                    NN.store_interest(name, None, ("", NN.INTERFACES["face0"]["port"]))
                     msg = f"Sending Interest for '{name}' at {time.strftime('%H:%M:%S', time.localtime(NN.get_PIT_entry(name)['time']))}"
                     print(msg)
                     self.append_log("INFO", msg)

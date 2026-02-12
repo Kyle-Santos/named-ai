@@ -5,8 +5,10 @@
 import struct
 
 # Start and End Delimiters
-PREAMBLE = b'\xDE\xAD' # 2 bytes
-POSTAMBLE = b'\xBE\xEF'   # 2 bytes
+PREAMBLE = b'\x7E' # 1 byte
+POSTAMBLE = b'\x1E'   # 1 byte
+# PREAMBLE = b'\xDE\xAD' # 2 bytes for better framing
+# POSTAMBLE = b'\xBE\xEF'   # 2 bytes for better framing
 
 
 ######################################
@@ -37,7 +39,8 @@ PACKET_TYPE_DATA     = 0b01 # 1
 
 IDENTIFIER_FORMAT = '!B' # Identifier field (1 byte)
 NAME_LENGTH_FORMAT = '!B' # Name Length field (1 byte)
-DATA_LENGTH_FORMAT = '!I'  # Data Length field (4 bytes)
+# DATA_LENGTH_FORMAT = '!I'  # Data Length field (4 bytes)
+DATA_LENGTH_FORMAT = '!B'  # Data Length field (1 byte)
 CHECKSUM_FORMAT = '!B' # Checksum (FCS) field (1 byte)
 
 

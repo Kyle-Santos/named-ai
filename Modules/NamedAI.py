@@ -31,11 +31,10 @@ def log(level, message, path=""):
 # Communication Module  #
 #########################
 # IP_ADDR = "127.0.0.1"
-SERIAL_INTERFACES = {}
 BAUD_RATE = 9600
 
 def create_serial_connection(port):
-    ser = serial.Serial(port, BAUD_RATE, timeout=0.1)
+    ser = serial.Serial(port, BAUD_RATE, timeout=0, rtscts=True)
     time.sleep(2)  # XBee warmup
     return ser
 
@@ -53,7 +52,7 @@ def create_interface(interfaces):
 
         ser = create_serial_connection(port)
 
-        SERIAL_INTERFACES[face] = {
+        INTERFACES[face] = {
             "sock": ser,          # keep key name 'sock' so rest of code works
             "face": face,
             "port": port
@@ -61,37 +60,44 @@ def create_interface(interfaces):
 
         log("INFO", f"Opened XBee interface {face} on {port}")
 
-    return SERIAL_INTERFACES
+    return INTERFACES
 
 
 def send_packet(sock, addr, packet_bytes):
     """Send packet via XBee serial (addr unused but kept for compatibility)."""
     try:
-        sock.write(packet_bytes + b"\n")  # delimiter for packet boundary
+        sock.write(packet_bytes)  # delimiter for packet boundary
         log("DEBUG", f"Sent {len(packet_bytes)} bytes over XBee")
     except Exception as e:
         log("ERROR", f"XBee send failed: {e}")
 
-
-def receive_packet(sock, buffer_size=4096):
+def receive_packet(sock, buf: list):
     """
-    Read one packet from XBee.
-    Uses newline as packet delimiter.
+    Receive raw bytes, buffer them, and return the next complete packet or None.
+    buf is a single-element list [b""] used as a mutable reference.
     """
     try:
-        line = sock.readline()
-        if line:
-            return line.strip(), "xbee"
-    except Exception as e:
-        log("ERROR", f"XBee receive failed: {e}")
+        buf[0] += sock.read(256)
 
-    raise TimeoutError  # mimic socket timeout behavior
+        # Discard anything before the first preamble
+        start = buf[0].find(packetStruct.PREAMBLE)
+        if start == -1:
+            buf[0] = b""
+            return None
+        if start > 0:
+            print(buf[0])
+            buf[0] = buf[0][start:]
 
+        # Return the first complete packet if one exists
+        end = buf[0].find(packetStruct.POSTAMBLE, len(packetStruct.PREAMBLE))
+        if end == -1:
+            return None
+        end += len(packetStruct.POSTAMBLE)
+        packet, buf[0] = buf[0][:end], buf[0][end:]
+        return packet
 
-
-
-
-
+    except TimeoutError:
+        return None
 
 ##################
 # Parsing Module #
@@ -119,6 +125,8 @@ def parse_packet(packet_bytes):
     # Check packet integrity through checksum
     checksum = core[-1]
     valid = compute_checksum(core[:-1]) == checksum
+    # print(core)
+    print("checksum:", compute_checksum(core[:-1]), "==", checksum)
     if not valid:
         return None, "Checksum mismatch"
     
@@ -137,9 +145,9 @@ def parse_packet(packet_bytes):
 
     elif pkt_type == packetStruct.PACKET_TYPE_DATA:
         name_len = struct.unpack(packetStruct.NAME_LENGTH_FORMAT, core[1:2])[0]
-        data_len = struct.unpack(packetStruct.DATA_LENGTH_FORMAT, core[2:6])[0]
+        data_len = struct.unpack(packetStruct.DATA_LENGTH_FORMAT, core[2:3])[0]
 
-        start_idx = 6
+        start_idx = 3
         name = core[start_idx:start_idx+name_len].decode()
         data_field = core[start_idx+name_len:start_idx+name_len+data_len]
 
@@ -228,7 +236,7 @@ def get_metrics():
 ##################
 NODE_NAME = None
 STORAGE_PATH = ""
-INTEREST_LIFETIME = 20  # seconds
+INTEREST_LIFETIME = 180  # seconds
 
 INTERFACES = {}  # port -> face, sock, port 
 
@@ -774,6 +782,8 @@ def save_data_to_file(name, data_bytes):
     log("INFO", f"Saving processed output for '{name}' to CS")
     if "recognize" in name:
         filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_')) + ".txt"
+    elif name.endswith(".txt"):
+        filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_'))
     elif "embedding" in name:
         filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_')) + ".npy"
     else:
@@ -885,6 +895,7 @@ def build_interest_packet(name):
     header += struct.pack(packetStruct.NAME_LENGTH_FORMAT, len(name_bytes))
     core = header + name_bytes
     checksum = compute_checksum(core).to_bytes(1, 'big')
+    print(f"checksum: {checksum}")
     packet = packetStruct.PREAMBLE + core + checksum + packetStruct.POSTAMBLE
     log("SUCCESS", f"Built interest packet for '{name}'")
     return packet
@@ -895,7 +906,7 @@ def build_data_packet(name, data):
     data_bytes = data
 
     packets = []
-    fragments = fragment_data(data_bytes)  
+    fragments = fragment_data(data_bytes, max_payload=32-20)  
 
     total_frags = len(fragments)
     for idx, frag in enumerate(fragments, start=1):
@@ -921,7 +932,8 @@ def build_data_packet(name, data):
     return packets
 
 
-def fragment_data(data_bytes, max_payload=80):
+# 91 = 128 bytes, 27 = 64 bytes
+def fragment_data(data_bytes, max_payload=7):
     """
     Splits data into fragments if > max_payload.
     Returns a list of fragments
