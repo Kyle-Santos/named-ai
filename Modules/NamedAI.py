@@ -236,7 +236,7 @@ def get_metrics():
 ##################
 NODE_NAME = None
 STORAGE_PATH = ""
-INTEREST_LIFETIME = 180  # seconds
+INTEREST_LIFETIME = 1800  # seconds
 
 INTERFACES = {}  # port -> face, sock, port 
 
@@ -906,7 +906,7 @@ def build_data_packet(name, data):
     data_bytes = data
 
     packets = []
-    fragments = fragment_data(data_bytes, max_payload=32-20)  
+    fragments = fragment_data(data_bytes, max_payload=67-20)  
 
     total_frags = len(fragments)
     for idx, frag in enumerate(fragments, start=1):

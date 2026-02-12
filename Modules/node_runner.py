@@ -167,11 +167,11 @@ def sender():
             sock, addr, response = task
             for resp in response:
                 NN.send_packet(sock, addr, resp)
-                time.sleep(0.05)  # slight delay to avoid UDP packet loss
+                time.sleep(0.1)  # slight delay to avoid UDP packet loss
                 # every 5 responses, add a longer delay to prevent overwhelming the network
-                if (response.index(resp) + 1) % 7 == 0:
+                if (response.index(resp) + 1) % 8 == 0:
                     # log("INFO", f"Sent {response.index(resp)+1}/{len(response)} packets for {addr}")
-                    time.sleep(5)
+                    time.sleep(6)
 
         except Exception as e:
             msg = f"[Sender] Error: {e}"

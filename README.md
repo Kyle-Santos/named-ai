@@ -39,6 +39,8 @@ send interest /dlsu/recognize(facenet(/dlsu/goks/cam/capture11.jpg))
 
 send interest /dlsu/recognize(mobilefacenet(/dlsu/goks/cam/capture11.jpg))
 
+send interest /txt7.txt
+
 ### Lower Versions
 
 send interest /dlsu/goks/cam/capture8.jpg
