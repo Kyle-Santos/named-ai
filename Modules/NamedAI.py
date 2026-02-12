@@ -77,7 +77,7 @@ def create_interface(interfaces):
 
 def send_packet(sock, addr, packet_bytes):
     """Send a packet to a specific address via UDP."""
-    log("DEBUG", f"Sending packet to {addr[0]}:{addr[1]}, Size: {len(packet_bytes)} bytes")
+    # log("DEBUG", f"Sending packet to {addr[0]}:{addr[1]}, Size: {len(packet_bytes)} bytes")
     sock.sendto(packet_bytes, addr)
 
 
