@@ -6,6 +6,8 @@ import re
 import os
 import time
 import threading
+import csv
+from datetime import datetime
 
 LOGS = []
 GUI_CALLBACK = None
@@ -173,6 +175,46 @@ def parse_packet(packet_bytes):
 # Metrics Calculation #
 #######################
 
+CSV_FILE = "results.csv"
+
+def append_metrics_to_csv(metrics):
+    file_exists = os.path.isfile(CSV_FILE)
+
+    with open(CSV_FILE, mode="a", newline="") as f:
+        writer = csv.writer(f)
+
+        # write header only once
+        if not file_exists:
+            writer.writerow([
+                "node",
+                "name",
+                "RTT_ms",
+                "interest_receive_time",                
+                "interest_sent_time",
+                "interest_latency",
+                "data_receive_time",
+                "data_sent_time",
+                "data_latency",
+            ])
+
+        writer.writerow([
+            NODE_NAME,
+            metrics["name"],
+            f"{metrics['RTT']:.6f}",
+            f"{metrics['interest_receive_time'] % 1000000}",
+            f"{metrics['interest_sent_time'] % 1000000}",
+            "",
+            f"{metrics['data_receive_time'] % 1000000}",
+            f"{metrics['data_sent_time'] % 1000000}",
+            "",
+        ])
+
+        # reset to 0
+        METRICS["interest_sent_time"] = 0
+        METRICS["interest_receive_time"] = 0
+        METRICS["data_sent_time"] = 0
+        METRICS["data_receive_time"] = 0
+
 # metrics
 METRICS = {
     "interests_sent": 0,
@@ -200,6 +242,11 @@ METRICS = {
     "goodput": 0.0,
     "test_start_time": 0.0,
     "test_end_time": 0.0,
+
+    "interest_sent_time": 0,
+    "interest_receive_time": 0,
+    "data_sent_time": 0,
+    "data_receive_time": 0
 }
 
 def update_metrics(metric_name, value=1):
@@ -408,11 +455,12 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     # First check Content Store
     cached_data = lookup_content(name)
     if cached_data:
-        from datetime import datetime
         sent_time = datetime.now()
+        METRICS["interest_receive_time"] = sent_time.timestamp() # for easier readability in CSV
         log(
             "DEBUG",
             f"Interest '{name}' received at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+            # f"Interest '{name}' received at {sent_time.timestamp()}, serving from CS"
         )
 
         update_CS_timestamp(name)
@@ -423,13 +471,23 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
         log("INFO", f"Served '{name}' from CS to {addr}")
 
 
-        from datetime import datetime
         sent_time = datetime.now()
+        METRICS["data_sent_time"] = sent_time.timestamp()
         log(
             "DEBUG",
-            f"Data '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+            # f"Data '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+            f"Data '{name}' sent at {sent_time.timestamp()} to {addr}"
         )
 
+        append_metrics_to_csv({
+            "name": f"{name}",
+            "RTT": 0,
+            "interest_sent_time": METRICS["interest_sent_time"], # make this float
+            "interest_receive_time": METRICS["interest_receive_time"],
+            "data_sent_time": METRICS["data_sent_time"],
+            "data_receive_time": METRICS["data_receive_time"]
+        })
+        
         update_metrics("data_packets_sent", len(response))
 
         return 
@@ -508,6 +566,9 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                 store_interest(name, interface, addr)
                 # log("INFO", f"PIT: {PIT}")
 
+                if METRICS["interest_sent_time"] == 0:
+                    METRICS["interest_sent_time"] = datetime.now().timestamp()
+
                 # send
                 SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [interest_packet]))
                 update_metrics("interests_sent")
@@ -531,6 +592,11 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
             log("INFO", f"Forwarding Interest for '{name}' to {forward_face}")
 
             SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [build_interest_packet(name)]))
+
+            if METRICS["interest_sent_time"] == 0:
+                METRICS["interest_sent_time"] = datetime.now().time
+                log("DEBUG", f"Recorded interest_sent_time at {METRICS['interest_sent_time']} for '{name}'")
+
             store_interest(name, interface, addr)
             update_metrics("interests_sent")
         else:
@@ -663,11 +729,22 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             #     update_metrics("data_packets_to_receive", METRICS["data_packets_to_receive_buffer"][original_name])
             #     del METRICS["data_packets_to_receive_buffer"][original_name]
 
-            from datetime import datetime
-            sent_time = datetime.now()
+            
+            receive_time = datetime.now()
+            METRICS["data_receive_time"] = receive_time.timestamp()
+
+            append_metrics_to_csv({
+                "name": original_name,
+                "RTT": rtt_ms,
+                "interest_sent_time": METRICS["interest_sent_time"], # make this float
+                "interest_receive_time": METRICS["interest_receive_time"],
+                "data_sent_time": METRICS["data_sent_time"],
+                "data_receive_time": METRICS["data_receive_time"]
+            })
+
             log(
                 "DEBUG",
-                f"Data '{name}' received at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+                f"Data '{name}' received at {receive_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
             )
 
         return cleanup_flags["delete_pit"]
