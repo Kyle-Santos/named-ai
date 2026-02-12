@@ -184,7 +184,7 @@ def sender():
             sock, addr, response = task
             for resp in response:
                 NN.send_packet(sock, addr, resp)
-                time.sleep(0.1)  # slight delay to avoid UDP packet loss
+                time.sleep(0.01)  # slight delay to avoid UDP packet loss
         except Exception as e:
             msg = f"[Sender] Error: {e}"
             print(msg)
@@ -701,9 +701,9 @@ if GUI_AVAILABLE:
 
                         elapsed   = time.time() - start_time
                         remaining = max(0.0, deadline - time.time())
-                        self.append_log("DEBUG",
-                            f"[{elapsed:5.1f}s / {remaining:5.1f}s left] "
-                            f"Sent Interest: {name}")
+                        # self.append_log("DEBUG",
+                        #     f"[{elapsed:5.1f}s / {remaining:5.1f}s left] "
+                        #     f"Sent Interest: {name}")
                         print(f"\033[96m[AutoSend] Sent Interest: {name}\033[0m")
                     except Exception as e:
                         self.append_log("ERROR", f"[AutoSend] {e}")

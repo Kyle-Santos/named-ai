@@ -79,7 +79,7 @@ def create_interface(interfaces):
 
 def send_packet(sock, addr, packet_bytes):
     """Send a packet to a specific address via UDP."""
-    log("DEBUG", f"Sending packet to {addr[0]}:{addr[1]}, Size: {len(packet_bytes)} bytes")
+    # log("DEBUG", f"Sending packet to {addr[0]}:{addr[1]}, Size: {len(packet_bytes)} bytes")
     sock.sendto(packet_bytes, addr)
 
 
@@ -395,10 +395,13 @@ def lookup_fib(name: str):
     best_match_length = -1
 
     for prefix, entry in FIB.items():
+        if entry["face"] == "face0":
+            interface_to_forward = (entry["face"], entry["port"])
+            
         # Check if name matches this prefix
         if name.startswith(prefix) or prefix == "/":  # "/" matches everything
             prefix_length = len(prefix)
-            
+
             # Only keep entries with longest match
             if prefix_length > best_match_length:
                 best_match_length = prefix_length
