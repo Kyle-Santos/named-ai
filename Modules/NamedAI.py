@@ -348,10 +348,13 @@ def lookup_fib(name: str):
     best_match_length = -1
 
     for prefix, entry in FIB.items():
+        if entry["face"] == "face0":
+            interface_to_forward = (entry["face"], entry["port"])
+            
         # Check if name matches this prefix
         if name.startswith(prefix) or prefix == "/":  # "/" matches everything
             prefix_length = len(prefix)
-            
+
             # Only keep entries with longest match
             if prefix_length > best_match_length:
                 best_match_length = prefix_length
