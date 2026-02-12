@@ -182,6 +182,8 @@ METRICS = {
     "data_packets_to_receive": 0, # total data packets expected to be received
     "data_packets_to_receive_buffer": {}, # buffer to track received packets for each name
     "data_packets_sent": 0,
+    "data_total_sent": 0,
+    "data_total_received": 0,
 
     "failed_packets": 0,
 
@@ -622,6 +624,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             PIT.pop(waiting_for_name)
 
         if cleanup_flags["delete_pit"] and original_name in PIT:
+            update_metrics("data_total_received")
             if original_name in FRAG_BUFFER:
                 # cleanup buffer
                 del FRAG_BUFFER[original_name] 
