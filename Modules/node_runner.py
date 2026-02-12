@@ -184,7 +184,7 @@ def sender():
             sock, addr, response = task
             for resp in response:
                 NN.send_packet(sock, addr, resp)
-                time.sleep(0.01)  # slight delay to avoid UDP packet loss
+                time.sleep(0.1)  # slight delay to avoid UDP packet loss
         except Exception as e:
             msg = f"[Sender] Error: {e}"
             print(msg)
@@ -632,49 +632,128 @@ if GUI_AVAILABLE:
             # Auto-send packets via GUI command handler if specified
             if hasattr(self, 'auto_send_packets_gui') and self.auto_send_packets_gui:
                 self.auto_send_interests()
-                NN.METRICS["test_start_time"] = time.time()
 
         def auto_send_interests(self):
             """Automatically send interest packets using the GUI command handler"""
-            def send_delayed():
-                time.sleep(3)  # Wait for backend initialization
                 
-                packets = [
-                    "/dlsu/goks/cam/capture1.jpg",
-                    "/dlsu/goks/cam/capture2.jpg",
-                    "/dlsu/goks/cam/capture3.jpg",
-                    "/dlsu/goks/cam/capture4.jpg",
-                    "/dlsu/goks/cam/capture5.jpg",
-                    "/dlsu/goks/cam/capture6.jpg",
-                    "/dlsu/goks/cam/capture7.jpg",
-                    "/dlsu/goks/cam/capture8.jpg",
-                    "/dlsu/goks/cam/capture9.jpg",
-                    "/dlsu/goks/cam/capture10.jpg",
-                    "/dlsu/goks/cam/capture11.jpg",
-                    "/dlsu/goks/cam/capture12.jpg",
-                    "/dlsu/goks/cam/capture13.jpg",
-                    "/dlsu/goks/cam/capture14.jpg",
-                    "/dlsu/goks/cam/capture15.jpg"
-                ]
+            # NN.METRICS["test_start_time"] = time.time()
+            TEST_DURATION = 30   # seconds — change this to whatever you need
+            SEND_INTERVAL = 0.5
 
-                print(f"\033[96mGUI will auto-send {len(packets)} packets after initialization\033[0m")
-                self.append_log("INFO", f"Auto-sending {len(packets)} Interest packets...")
-                
-                for i, packet_name in enumerate(packets, 1):
-                    # Simulate user typing the command
-                    self.cmd.setText(f"send interest {packet_name}")
-                    self.append_log("DEBUG", f"[{i}/{len(packets)}] Queuing Interest: {packet_name}")
-                    
-                    # Trigger the command handler
-                    self.handle_command()
-                    
-                    # Small delay between packets
-                    time.sleep(0.5)
-                
-                self.append_log("SUCCESS", "All Interest packets sent!")
-            
-            # Run in a separate thread to avoid blocking GUI
-            threading.Thread(target=send_delayed, daemon=True, name="GUI-AutoSender").start()
+            packets = [
+                "/dlsu/goks/cam/capture1.jpg",
+                "/dlsu/goks/cam/capture2.jpg",
+                "/dlsu/goks/cam/capture3.jpg",
+                "/dlsu/goks/cam/capture4.jpg",
+                "/dlsu/goks/cam/capture5.jpg",
+                "/dlsu/goks/cam/capture6.jpg",
+                "/dlsu/goks/cam/capture7.jpg",
+                "/dlsu/goks/cam/capture8.jpg",
+                "/dlsu/goks/cam/capture9.jpg",
+                "/dlsu/goks/cam/capture10.jpg",
+                "/dlsu/goks/cam/capture11.jpg",
+                "/dlsu/goks/cam/capture12.jpg",
+                "/dlsu/goks/cam/capture13.jpg",
+                "/dlsu/goks/cam/capture14.jpg",
+                "/dlsu/goks/cam/capture15.jpg"
+            ]
+
+            def send_loop():
+                # ── wait for backend init ──────────────────────────────────────
+                time.sleep(3)
+
+                self.append_log("INFO",
+                    f"Timed test starting: {TEST_DURATION}s, "
+                    f"cycling {len(packets)} name(s), interval={SEND_INTERVAL}s")
+                print(f"\033[96m[AutoSend] Timed test: {TEST_DURATION}s\033[0m")
+
+                # ── reset metrics and start the clock ─────────────────────────
+                for key in ("interests_sent", "data_total_received", "data_total_sent",
+                            "failed_packets", "total_data_bytes_received",
+                            "total_data_overhead_bytes_received", "ave_RTT",
+                            "throughput", "goodput", "PDR",
+                            "data_packets_to_receive"):
+                    NN.METRICS[key] = 0 if isinstance(NN.METRICS[key], int) else 0.0
+                NN.METRICS["data_packets_to_receive_buffer"] = {}
+
+                start_time = time.time()
+                NN.METRICS["test_start_time"] = start_time
+                deadline   = start_time + TEST_DURATION
+                idx        = 0
+
+                print(f"\033[96m[AutoSend] Starting timed test loop...\033[0m")
+                # ── send loop ─────────────────────────────────────────────────
+                while time.time() < deadline:
+                    name = packets[idx % len(packets)]
+                    idx += 1
+
+                    try:
+                        interest_packet = NN.build_interest_packet(name)
+                        _, dest_port = NN.lookup_fib(name)
+                        SEND_QUEUE.put((
+                            NN.INTERFACES["face0"]["sock"],
+                            (NN.IP_ADDR, dest_port),
+                            [interest_packet]
+                        ))
+                        NN.update_metrics("interests_sent")
+                        NN.store_interest(name, None,
+                                        (NN.IP_ADDR, NN.INTERFACES["face0"]["port"]))
+
+                        elapsed   = time.time() - start_time
+                        remaining = max(0.0, deadline - time.time())
+                        self.append_log("DEBUG",
+                            f"[{elapsed:5.1f}s / {remaining:5.1f}s left] "
+                            f"Sent Interest: {name}")
+                        print(f"\033[96m[AutoSend] Sent Interest: {name}\033[0m")
+                    except Exception as e:
+                        self.append_log("ERROR", f"[AutoSend] {e}")
+                        NN.update_metrics("failed_packets")
+
+                    # sleep for SEND_INTERVAL but bail early if deadline passed
+                    wake = time.time() + SEND_INTERVAL
+                    while time.time() < wake and time.time() < deadline:
+                        time.sleep(0.05)
+
+                # ── test over — collect and log metrics ───────────────────────
+                end_time   = time.time()
+                elapsed    = end_time - start_time
+                NN.METRICS["test_end_time"] = end_time
+
+                m = NN.get_metrics()
+
+                if elapsed > 0:
+                    m["throughput"] = m["total_data_overhead_bytes_received"] / 1024 / elapsed
+                    m["goodput"]    = m["total_data_bytes_received"] / 1024 / elapsed
+                    NN.METRICS["throughput"] = m["throughput"]
+                    NN.METRICS["goodput"]    = m["goodput"]
+
+                separator = "─" * 55
+                self.append_log("SUCCESS", separator)
+                self.append_log("SUCCESS", f"  TIMED TEST COMPLETE  ({elapsed:.2f} s)")
+                self.append_log("SUCCESS", separator)
+                self.append_log("SUCCESS", f"  Interests Sent    : {m['interests_sent']}")
+                self.append_log("SUCCESS", f"  Data Pkts Received: {m['data_total_received']}")
+                self.append_log("SUCCESS", f"  Failed Packets    : {m['failed_packets']}")
+                self.append_log("SUCCESS", f"  PDR               : {m['PDR']:.1f} %")
+                self.append_log("SUCCESS", f"  Avg RTT           : {m['ave_RTT']:.2f} ms")
+                self.append_log("SUCCESS", f"  Throughput        : {m['throughput']:.2f} KB/s")
+                self.append_log("SUCCESS", f"  Goodput           : {m['goodput']:.2f} KB/s")
+                self.append_log("SUCCESS", separator)
+
+                # Mirror to stdout so it's visible in the terminal too
+                print(f"\n\033[92m{'='*55}")
+                print(f"  TIMED TEST COMPLETE  ({elapsed:.2f} s)")
+                print(f"{'='*55}")
+                print(f"  Interests Sent    : {m['interests_sent']}")
+                print(f"  Data Pkts Received: {m['data_total_received']}")
+                print(f"  Failed Packets    : {m['failed_packets']}")
+                print(f"  PDR               : {m['PDR']:.1f} %")
+                print(f"  Avg RTT           : {m['ave_RTT']:.2f} ms")
+                print(f"  Throughput        : {m['throughput']:.2f} KB/s")
+                print(f"  Goodput           : {m['goodput']:.2f} KB/s")
+                print(f"{'='*55}\033[0m\n")
+
+            threading.Thread(target=send_loop, daemon=True, name="AutoSend").start()
 
         def quick_command(self, txt: str):
             if txt == "send interest":
