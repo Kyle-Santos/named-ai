@@ -218,7 +218,7 @@ def get_metrics():
         update_metrics("data_packets_to_receive", added_to_receive)  # update total expected to receive
 
     if METRICS["data_packets_to_receive"] > 0:
-        METRICS["PDR"] = (METRICS["data_packets_received"] / METRICS["data_packets_to_receive"]) * 100.0
+        METRICS["PDR"] = (METRICS["data_total_received"] / METRICS["interests_sent"]) * 100.0
     return METRICS 
 
 
@@ -228,7 +228,7 @@ def get_metrics():
 ##################
 NODE_NAME = None
 STORAGE_PATH = ""
-INTEREST_LIFETIME = 30  # seconds
+INTEREST_LIFETIME = 90  # seconds
 
 INTERFACES = {}  # port -> face, sock, port 
 

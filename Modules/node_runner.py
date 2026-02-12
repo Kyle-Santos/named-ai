@@ -184,7 +184,7 @@ def sender():
             sock, addr, response = task
             for resp in response:
                 NN.send_packet(sock, addr, resp)
-                time.sleep(0.001)  # slight delay to avoid UDP packet loss
+                time.sleep(0.01)  # slight delay to avoid UDP packet loss
         except Exception as e:
             msg = f"[Sender] Error: {e}"
             print(msg)
@@ -640,16 +640,16 @@ if GUI_AVAILABLE:
                 time.sleep(3)  # Wait for backend initialization
                 
                 packets = [
-                    # "/dlsu/goks/cam/capture1.jpg",
-                    # "/dlsu/goks/cam/capture2.jpg",
-                    # "/dlsu/goks/cam/capture3.jpg",
-                    # "/dlsu/goks/cam/capture4.jpg",
-                    # "/dlsu/goks/cam/capture5.jpg",
-                    # "/dlsu/goks/cam/capture6.jpg",
-                    # "/dlsu/goks/cam/capture7.jpg",
-                    # "/dlsu/goks/cam/capture8.jpg",
-                    # "/dlsu/goks/cam/capture9.jpg",
-                    # "/dlsu/goks/cam/capture10.jpg",
+                    "/dlsu/goks/cam/capture1.jpg",
+                    "/dlsu/goks/cam/capture2.jpg",
+                    "/dlsu/goks/cam/capture3.jpg",
+                    "/dlsu/goks/cam/capture4.jpg",
+                    "/dlsu/goks/cam/capture5.jpg",
+                    "/dlsu/goks/cam/capture6.jpg",
+                    "/dlsu/goks/cam/capture7.jpg",
+                    "/dlsu/goks/cam/capture8.jpg",
+                    "/dlsu/goks/cam/capture9.jpg",
+                    "/dlsu/goks/cam/capture10.jpg",
                     "/dlsu/goks/cam/capture11.jpg",
                     "/dlsu/goks/cam/capture12.jpg",
                     "/dlsu/goks/cam/capture13.jpg",
