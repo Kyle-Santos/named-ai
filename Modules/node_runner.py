@@ -54,9 +54,9 @@ def load_node_config(config_path: str, node_name: str):
         if func_name == "recognize":
             functions.load_facebank()
 
-        if func_name == "insightface_embedding":
-            functions.load_insightface()
-            print("InsightFace model loaded.")
+        # if func_name == "insightface_embedding":
+        #     functions.load_insightface()
+        #     print("InsightFace model loaded.")
 
         if func_name == "facenet_embedding":
             functions.load_facenet()
@@ -821,6 +821,7 @@ if GUI_AVAILABLE:
                     # append log sent timestamp
                     from datetime import datetime
                     sent_time = datetime.now()
+                    NN.update_metrics("interest_sent_time", sent_time.timestamp())
                     self.append_log(
                         "DEBUG",
                         f"Interest '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm

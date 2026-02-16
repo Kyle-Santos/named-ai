@@ -597,7 +597,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
             SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [build_interest_packet(name)]))
 
             if METRICS["interest_sent_time"] == 0:
-                METRICS["interest_sent_time"] = datetime.now().time
+                METRICS["interest_sent_time"] = datetime.now().timestamp()
                 log("DEBUG", f"Recorded interest_sent_time at {METRICS['interest_sent_time']} for '{name}'")
 
             store_interest(name, interface, addr)
