@@ -838,6 +838,22 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
     log("INFO", f"In-Network Function pipeline complete for '{name}', size={len(processed_data)} bytes")
     # log("INFO", f"Building final In-Network Function Data packet for '{name}'")
 
+    pit_entry, original_name, waiting_for_name = find_pit_entry(name)  # refresh PIT entry in case it was modified during processing 
+    log("DEBUG", f"Current PIT entry: {pit_entry}")
+    if waiting_for_name == name and len(pit_entry.get("funcs", [])) == 1 and pit_entry["funcs"][0] == "recognize":
+        processed_data = apply_function_pipeline(original_name, processed_data, pit_entry)
+        log("DEBUG", f"Applied final recognition function for '{processed_data}'")
+        response = build_data_packet(original_name, processed_data)
+        forward_face = pit_entry["interface"].copy().pop()  # get the single face to forward to
+        SEND_QUEUE.put((
+                INTERFACES[forward_face]["sock"],
+                PIT_MAPPING.get(forward_face),
+                response
+            ))
+        PIT.pop(waiting_for_name)
+        cleanup_flags["delete_pit"] = True
+        return processed_data
+
     # Send processed results back
     response = build_data_packet(name, processed_data)
 

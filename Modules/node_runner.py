@@ -35,7 +35,7 @@ def load_node_config(config_path: str, node_name: str):
     with open(config_path, "r") as f:
         config = json.load(f)
     node_config = next(n for n in config["nodes"] if n["name"] == node_name)
-    dlsu = next(n for n in config["nodes"] if n["name"] == "/dlsu")
+    cam = next(n for n in config["nodes"] if n["name"] == "/dlsu/goks/cam")
 
     # NN.set_ip_addr(config.get("ip", "127.0.0.1"))
     
@@ -48,7 +48,7 @@ def load_node_config(config_path: str, node_name: str):
 
     NN.NODE_FUNCTIONS_MAPPING = node_config.get("node_functions_mapping", {})
     
-    functions_list = dlsu["node_functions_mapping"].get(NN.NODE_NAME, []) 
+    functions_list = cam["node_functions_mapping"].get(NN.NODE_NAME, []) 
     print(f"Functions for {NN.NODE_NAME}: {functions_list}")
     for func_name in functions_list:
         if func_name == "detect":

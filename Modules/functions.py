@@ -195,8 +195,8 @@ def orchestrate(name: str, model, PIT, functions_mapping) -> str:
     # Tier 1: goks (closest to camera)
     # Tier 2: andrew & velasco (same priority)
     priority_tiers = [
-        ["/dlsu/goks"],            # Tier 1 (highest)
-        ["/dlsu/andrew", "/dlsu/velasco"],  # Tier 2 (same priority)
+        ["/dlsu/goks/cam"],            # Tier 1 (highest)
+        # ["/dlsu/andrew", "/dlsu/velasco"],  # Tier 2 (same priority)
     ]
 
     if model not in model_pipelines:
@@ -294,8 +294,8 @@ def _is_node_busy(node, func, PIT):
 def load_facebank():
     facebanks = {
         "insightface": "facebanks\\facebank_insightface.pt",
-        "facenet": "facebanks\\facebank_facenet.pkl",
-        "mobilefacenet": "facebanks\\facebank_mobilefacenet1.pkl",
+        "facenet": "facebanks/facebank_facenet.pkl",
+        "mobilefacenet": "facebanks/facebank_mobilefacenet1.pkl",
     }
 
     for model, path in facebanks.items():
