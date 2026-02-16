@@ -15,10 +15,9 @@
         {
             "name": "/dlsu/goks/cam",
             "interfaces": [
-                { "face": "face0", "port": "/dev/tty.usbserial-AI02Z6GL" }
+                { "face": "face0", "port": "/dev/tty.usbserial-AI02Z6DU" }
             ],
             "FIB": {
-                "/dlsu/goks": { "face": "face0", "port": 9019 }
             },
             "storage": "goks_cam_node/captures/",
             "node_functions_mapping": {

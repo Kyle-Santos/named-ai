@@ -6,6 +6,8 @@ import os
 import time
 import threading
 import serial
+import csv
+from datetime import datetime
 
 LOGS = []
 GUI_CALLBACK = None
@@ -31,11 +33,11 @@ def log(level, message, path=""):
 # Communication Module  #
 #########################
 # IP_ADDR = "127.0.0.1"
-BAUD_RATE = 9600
+BAUD_RATE = 57600
 
 def create_serial_connection(port):
     ser = serial.Serial(port, BAUD_RATE, timeout=0, rtscts=True)
-    time.sleep(2)  # XBee warmup
+    time.sleep(1)  # XBee warmup
     return ser
 
 def create_interface(interfaces):
@@ -66,7 +68,8 @@ def create_interface(interfaces):
 def send_packet(sock, addr, packet_bytes):
     """Send packet via XBee serial (addr unused but kept for compatibility)."""
     try:
-        sock.write(packet_bytes)  # delimiter for packet boundary
+        sock.write(packet_bytes)  
+        sock.flush()
         log("DEBUG", f"Sent {len(packet_bytes)} bytes over XBee")
     except Exception as e:
         log("ERROR", f"XBee send failed: {e}")
@@ -183,6 +186,46 @@ def parse_packet(packet_bytes):
 # Metrics Calculation #
 #######################
 
+CSV_FILE = "results.csv"
+
+def append_metrics_to_csv(metrics):
+    file_exists = os.path.isfile(CSV_FILE)
+
+    with open(CSV_FILE, mode="a", newline="") as f:
+        writer = csv.writer(f)
+
+        # write header only once
+        if not file_exists:
+            writer.writerow([
+                "node",
+                "name",
+                "RTT_ms",
+                "interest_receive_time",                
+                "interest_sent_time",
+                "interest_latency",
+                "data_receive_time",
+                "data_sent_time",
+                "data_latency",
+            ])
+
+        writer.writerow([
+            NODE_NAME,
+            metrics["name"],
+            f"{metrics['RTT']:.6f}",
+            f"{metrics['interest_receive_time'] % 1000000}",
+            f"{metrics['interest_sent_time'] % 1000000}",
+            "",
+            f"{metrics['data_receive_time'] % 1000000}",
+            f"{metrics['data_sent_time'] % 1000000}",
+            "",
+        ])
+
+        # reset to 0
+        METRICS["interest_sent_time"] = 0
+        METRICS["interest_receive_time"] = 0
+        METRICS["data_sent_time"] = 0
+        METRICS["data_receive_time"] = 0
+
 # metrics
 METRICS = {
     "interests_sent": 0,
@@ -192,6 +235,8 @@ METRICS = {
     "data_packets_to_receive": 0, # total data packets expected to be received
     "data_packets_to_receive_buffer": {}, # buffer to track received packets for each name
     "data_packets_sent": 0,
+    "data_total_sent": 0,
+    "data_total_received": 0,
 
     "failed_packets": 0,
 
@@ -208,6 +253,11 @@ METRICS = {
     "goodput": 0.0,
     "test_start_time": 0.0,
     "test_end_time": 0.0,
+
+    "interest_sent_time": 0,
+    "interest_receive_time": 0,
+    "data_sent_time": 0,
+    "data_receive_time": 0
 }
 
 def update_metrics(metric_name, value=1):
@@ -220,13 +270,13 @@ def update_metrics(metric_name, value=1):
 def get_metrics():
     """Retrieve current metrics."""
     # Calculate PDR
-    if not FRAG_BUFFER :
+    if not FRAG_BUFFER:
         added_to_receive = sum(METRICS["data_packets_to_receive_buffer"].values()) 
         METRICS["data_packets_to_receive_buffer"] = {}  # reset buffer after calculating total
         update_metrics("data_packets_to_receive", added_to_receive)  # update total expected to receive
 
     if METRICS["data_packets_to_receive"] > 0:
-        METRICS["PDR"] = (METRICS["data_packets_received"] / METRICS["data_packets_to_receive"]) * 100.0
+        METRICS["PDR"] = (METRICS["data_total_received"] / METRICS["interests_sent"]) * 100.0
     return METRICS 
 
 
@@ -415,31 +465,50 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     if METRICS["test_start_time"] == 0.0:
         METRICS["test_start_time"] = time.time()
 
+    sent_time = datetime.now()
+    METRICS["interest_receive_time"] = sent_time.timestamp() # for easier readability in CSV
+    log(
+        "DEBUG",
+        f"Interest '{name}' received at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+        # f"Interest '{name}' received at {sent_time.timestamp()}, serving from CS"
+    )
+    
     # First check Content Store
     cached_data = lookup_content(name)
     if cached_data:
-        from datetime import datetime
         sent_time = datetime.now()
+        METRICS["interest_receive_time"] = sent_time.timestamp() # for easier readability in CSV
         log(
             "DEBUG",
             f"Interest '{name}' received at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+            # f"Interest '{name}' received at {sent_time.timestamp()}, serving from CS"
         )
 
         update_CS_timestamp(name)
         bytes = cached_data["data"]
         response = build_data_packet(name, bytes)
-
+        update_metrics("data_total_sent") 
         SEND_QUEUE.put((sock, addr, response))
-        log("INFO", f"Served '{name}' from CS to {addr}")
+        log("INFO", f"Served '{name}' from CS to {sock}")
 
 
-        from datetime import datetime
         sent_time = datetime.now()
+        METRICS["data_sent_time"] = sent_time.timestamp()
         log(
             "DEBUG",
-            f"Data '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+            # f"Data '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+            f"Data '{name}' sent at {sent_time.timestamp()} to {addr}"
         )
 
+        append_metrics_to_csv({
+            "name": f"{name}",
+            "RTT": 0,
+            "interest_sent_time": METRICS["interest_sent_time"], # make this float
+            "interest_receive_time": METRICS["interest_receive_time"],
+            "data_sent_time": METRICS["data_sent_time"],
+            "data_receive_time": METRICS["data_receive_time"]
+        })
+        
         update_metrics("data_packets_sent", len(response))
 
         return 
@@ -458,14 +527,14 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
         if re.search(r"^[a-zA-Z_]+\(.*\)", requested_name):
             # the NFN is for this node
             base_name, funcs = parse_nfn_expression(requested_name)
-            log("INFO", f"Parsed In-Network Function Interest: base_name='{base_name}', funcs={funcs}")
+            log("DEBUG", f"Parsed In-Network Function Interest: base_name='{base_name}', funcs={funcs}")
 
             if "recognize" in funcs:
                 model, recognize = funcs # ['openface', 'recognize']
                 log("INFO", f"Received In-Network Function Interest for recognition pipeline: '{name}'")
                 func = FUNCTIONS_TABLE["orchestrate"]
                 interest_expr = func(base_name, model, PIT, NODE_FUNCTIONS_MAPPING)
-                log("INFO", f"Orchestrated Interest Expression: '{interest_expr}'")
+                log("DEBUG", f"Orchestrated Interest Expression: '{interest_expr}'")
                 store_interest(name, interface, addr, [recognize], interest_expr)
                 base_name = interest_expr
             else:
@@ -518,6 +587,9 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                 store_interest(name, interface, addr)
                 # log("INFO", f"PIT: {PIT}")
 
+                if METRICS["interest_sent_time"] == 0:
+                    METRICS["interest_sent_time"] = datetime.now().timestamp()
+
                 # send
                 SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [interest_packet]))
                 update_metrics("interests_sent")
@@ -541,6 +613,11 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
             log("INFO", f"Forwarding Interest for '{name}' to {forward_face}")
 
             SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [build_interest_packet(name)]))
+
+            if METRICS["interest_sent_time"] == 0:
+                METRICS["interest_sent_time"] = datetime.now().timestamp()
+                log("DEBUG", f"Recorded interest_sent_time at {METRICS['interest_sent_time']} for '{name}'")
+
             store_interest(name, interface, addr)
             update_metrics("interests_sent")
         else:
@@ -565,7 +642,6 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
         update_metrics("total_data_overhead_bytes_received", len(raw_packet))
         update_metrics("data_overhead_bytes_received_per_name", len(raw_packet))
         update_metrics("data_bytes_received_per_name", len(data))
-
 
         # Find the relevant PIT entry
         pit_entry, original_name, waiting_for_name = find_pit_entry(name)
@@ -608,6 +684,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
 
                     # Cache if all fragments received
                     if len(FRAG_BUFFER[name]["frags"]) == frag_total:
+                        update_metrics("data_total_sent")
                         reassembled_data = reassemble_fragments(name, frag_total)
                         cleanup_flags["delete_pit"] = True            
                         processed_data = reassembled_data  # Return to be saved once
@@ -634,6 +711,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             PIT.pop(waiting_for_name)
 
         if cleanup_flags["delete_pit"] and original_name in PIT:
+            update_metrics("data_total_received")
             if original_name in FRAG_BUFFER:
                 # cleanup buffer
                 del FRAG_BUFFER[original_name] 
@@ -671,15 +749,25 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             #     update_metrics("data_packets_to_receive", METRICS["data_packets_to_receive_buffer"][original_name])
             #     del METRICS["data_packets_to_receive_buffer"][original_name]
 
-            from datetime import datetime
-            sent_time = datetime.now()
+            
+            receive_time = datetime.now()
+            METRICS["data_receive_time"] = receive_time.timestamp()
+
+            append_metrics_to_csv({
+                "name": original_name,
+                "RTT": rtt_ms,
+                "interest_sent_time": METRICS["interest_sent_time"], # make this float
+                "interest_receive_time": METRICS["interest_receive_time"],
+                "data_sent_time": METRICS["data_sent_time"],
+                "data_receive_time": METRICS["data_receive_time"]
+            })
+
             log(
                 "DEBUG",
-                f"Data '{name}' received at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+                f"Data '{name}' received at {receive_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
             )
 
         return cleanup_flags["delete_pit"]
-
 
 def find_pit_entry(name):
     """Find PIT entry for the given name or waiting_for relationship"""
@@ -844,16 +932,32 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
         processed_data = apply_function_pipeline(original_name, processed_data, pit_entry)
         log("DEBUG", f"Applied final recognition function for '{processed_data}'")
         response = build_data_packet(original_name, processed_data)
+        
         forward_face = pit_entry["interface"].copy().pop()  # get the single face to forward to
-        SEND_QUEUE.put((
-                INTERFACES[forward_face]["sock"],
-                PIT_MAPPING.get(forward_face),
-                response
-            ))
+        SEND_QUEUE.put((INTERFACES["face0"]["sock"],"",response))
+
         PIT.pop(waiting_for_name)
         cleanup_flags["delete_pit"] = True
-        return processed_data
 
+        sent_time = datetime.now()
+        METRICS["data_sent_time"] = sent_time.timestamp()
+        log(
+            "DEBUG",
+            # f"Data '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+            f"Data '{original_name}' sent at {sent_time.timestamp()}"
+        )
+
+        append_metrics_to_csv({
+            "name": f"{original_name}",
+            "RTT": 0,
+            "interest_sent_time": METRICS["interest_sent_time"], # make this float
+            "interest_receive_time": METRICS["interest_receive_time"],
+            "data_sent_time": METRICS["data_sent_time"],
+            "data_receive_time": METRICS["data_receive_time"]
+        })
+        
+        return processed_data
+        
     # Send processed results back
     response = build_data_packet(name, processed_data)
 
@@ -866,7 +970,7 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
             ))
     
     update_metrics("data_packets_sent", len(response))
-    log("INFO", f"Processed In-Network Function '{name}' and sent to {pit_entry['interface']}")
+    log("DEBUG", f"Processed In-Network Function '{name}' and sent to {pit_entry['interface']}")
 
     cleanup_flags["delete_pit"] = True
     return processed_data
@@ -922,7 +1026,7 @@ def build_data_packet(name, data):
     data_bytes = data
 
     packets = []
-    fragments = fragment_data(data_bytes, max_payload=67-20)  
+    fragments = fragment_data(data_bytes, max_payload=32-(15+len(name)))  
 
     total_frags = len(fragments)
     for idx, frag in enumerate(fragments, start=1):

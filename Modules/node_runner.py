@@ -61,9 +61,9 @@ def load_node_config(config_path: str, node_name: str):
         #     functions.load_insightface()
         #     print("InsightFace model loaded.")
 
-        if func_name == "facenet_embedding":
-            functions.load_facenet()
-            print("Facenet model loaded.")
+        # if func_name == "facenet_embedding":
+        #     functions.load_facenet()
+        #     print("Facenet model loaded.")
 
         if func_name == "mfn_embedding":
             functions.load_mfn()
@@ -169,9 +169,9 @@ def sender():
                 NN.send_packet(sock, addr, resp)
                 time.sleep(0.1)  # slight delay to avoid UDP packet loss
                 # every 5 responses, add a longer delay to prevent overwhelming the network
-                if (response.index(resp) + 1) % 8 == 0:
-                    # log("INFO", f"Sent {response.index(resp)+1}/{len(response)} packets for {addr}")
-                    time.sleep(6)
+                # if (response.index(resp) + 1) % 6 == 0:
+                #     # log("INFO", f"Sent {response.index(resp)+1}/{len(response)} packets for {addr}")
+                #     time.sleep(0.5)
 
         except Exception as e:
             msg = f"[Sender] Error: {e}"
@@ -738,6 +738,7 @@ if GUI_AVAILABLE:
                     # append log sent timestamp
                     from datetime import datetime
                     sent_time = datetime.now()
+                    NN.update_metrics("interest_sent_time", sent_time.timestamp())
                     self.append_log(
                         "DEBUG",
                         f"Interest '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
