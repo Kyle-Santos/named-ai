@@ -501,9 +501,9 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
         return
 
     # If this Interest is meant for this node
-    if name.startswith(NODE_NAME):
+    if NODE_NAME and (name == NODE_NAME or name.startswith(NODE_NAME + "/")):
         # /dlsu/goks/detect() -> detect()
-        requested_name = name[len(NODE_NAME)+1:]
+        requested_name = name[len(NODE_NAME)+1:] if name != NODE_NAME else ""
         print(requested_name)
         # in-network function case
         if re.search(r"^[a-zA-Z_]+\(.*\)", requested_name):
@@ -722,7 +722,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                 log("INFO", "PIT is now empty.")
                 METRICS["test_end_time"] = time.time()
                 elapsed_time = METRICS["test_end_time"] - METRICS["test_start_time"]
-                log("DEBUG", f"Test completed in {elapsed_time:.2f} seconds.")
+                log("DEBUG", f"Test completed in {time.strftime('%H:%M:%S', time.gmtime(elapsed_time))}")
                 average_throughput = METRICS["total_data_overhead_bytes_received"] / 1024 / elapsed_time if elapsed_time > 0 else 0.0
                 average_goodput = METRICS["total_data_bytes_received"] / 1024 / elapsed_time if elapsed_time > 0 else 0.0
                 METRICS["throughput"] = average_throughput  # in KB/s

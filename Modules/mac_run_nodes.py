@@ -11,8 +11,8 @@ commands = [
     # [python, "./node_runner.py", "--node", "/dlsu/velasco"],
     # [python, "./node_runner.py", "--client", "user", "--auto-send"],
     [python, "./node_runner.py", "--client", "user1"],
-    [python, "./node_runner.py", "--client", "user2"],
-    [python, "./node_runner.py", "--client", "user3"],
+    # [python, "./node_runner.py", "--client", "user2"],
+    # [python, "./node_runner.py", "--client", "user3"],
 ]
 
 processes = []
