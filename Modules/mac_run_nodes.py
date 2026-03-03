@@ -10,7 +10,8 @@ commands = [
     # [python, "./node_runner.py", "--node", "/dlsu/andrew"],
     # [python, "./node_runner.py", "--node", "/dlsu/velasco"],
     # [python, "./node_runner.py", "--client", "user", "--auto-send"],
-    [python, "./node_runner.py", "--client", "user1"],
+    [python, "./node_runner.py", "--client", "user"],
+    # [python, "./node_runner.py", "--client", "user1"],
     # [python, "./node_runner.py", "--client", "user2"],
     # [python, "./node_runner.py", "--client", "user3"],
 ]

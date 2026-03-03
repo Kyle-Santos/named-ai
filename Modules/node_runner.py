@@ -785,11 +785,12 @@ if GUI_AVAILABLE:
                         return
                     name = parts[2].strip()
                     
-                    interest_packet = NN.build_interest_packet(name)
+                    _, dest_port = NN.lookup_fib(name)
+
+                    interest_packet = NN.build_interest_packet(name, dest_port=dest_port)
                     print(f"[DEBUG] Raw Interest Packet: {interest_packet}")
                     print(f"[DEBUG] Packet Size: {len(interest_packet)} bytes")
                                 
-                    _, dest_port = NN.lookup_fib(name)
                     SEND_QUEUE.put((NN.INTERFACES["face0"]["sock"], (NN.IP_ADDR, dest_port), [interest_packet]))
                     
                     # 10.0.0.106
