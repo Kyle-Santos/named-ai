@@ -1,6 +1,41 @@
 {
-    "ip": "0.0.0.0",
+    "ip": "127.0.0.1",
     "nodes": [
+        {
+            "name": "user3",
+            "interfaces": [
+                { "face": "face0", "port": 9041 }
+            ],
+            "FIB": {
+                "user2": { "face": "face0", "port": 9042 }
+            },  
+            "storage": "client_node/storage1/"
+        },
+
+        {
+            "name": "user2",
+            "interfaces": [
+                { "face": "face1", "port": 9042 },
+                { "face": "face0", "port": 9043 }
+            ],
+            "FIB": {
+                "user1": { "face": "face0", "port": 9002 }
+            },
+            "storage": "client_node/storage2/"
+        },
+
+        {
+            "name": "user1",
+            "interfaces": [
+                { "face": "face0", "port": 9001 },
+                { "face": "face1", "port": 9002 }
+            ],
+            "FIB": {
+                "/dlsu": { "face": "face0", "port": 9009 }
+            },
+            "storage": "client_node/storage/"
+        },
+
         {
             "name": "user",
             "interfaces": [
@@ -11,7 +46,7 @@
             },
             "storage": "client_node/storage/"
         },
-        
+
         {
             "name": "/dlsu",
             "interfaces": [

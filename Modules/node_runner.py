@@ -184,7 +184,7 @@ def sender():
             sock, addr, response = task
             for resp in response:
                 NN.send_packet(sock, addr, resp)
-                time.sleep(0.001)  # slight delay to avoid UDP packet loss
+                time.sleep(0.01)  # slight delay to avoid UDP packet loss
         except Exception as e:
             msg = f"[Sender] Error: {e}"
             print(msg)
@@ -307,14 +307,15 @@ if GUI_AVAILABLE:
         def flush(self):
             pass
 
-    class NodeMonitor(QWidget):
+    class  NodeMonitor(QWidget):
         log_signal = pyqtSignal(str, str)  # level, line
 
-        def __init__(self, start_mode: str, node_name: str):
+        def __init__(self, start_mode: str, node_name: str, auto_send: bool):
             super().__init__()
             self.start_mode = start_mode
             self.node_name = node_name
             self.current_table = "pit"  # Default to PIT table
+            self.auto_send_packets_gui = auto_send
 
             # Determine colors based on node type
             node_lower = self.node_name.lower()
@@ -485,7 +486,7 @@ if GUI_AVAILABLE:
                 "interests_sent", "Interests Sent", self.SUCCESS
             )
             self.data_packets_sent_box = self._make_counter(
-                "data_packets_sent", "Data Sent", self.ACCENT
+                "data_total_sent", "Data Sent", self.ACCENT
             )
             self.failed_packets_box = self._make_counter(
                 "failed_packets", "Failed Packets", self.ERROR
@@ -503,7 +504,7 @@ if GUI_AVAILABLE:
                 "interests_received", "Interests Received", self.SUCCESS
             )
             self.data_packets_received_box = self._make_counter(
-                "data_packets_received", "Data Received", self.ACCENT
+                "data_total_received", "Data Received", self.ACCENT
             )
             self.total_data_bytes_received_box = self._make_counter(
                 "total_data_bytes_received", "Total KBs Received", self.ACCENT3
@@ -628,6 +629,115 @@ if GUI_AVAILABLE:
             t = threading.Thread(target=backend_wrapper, daemon=False)
             t.start()
 
+            # Auto-send packets via GUI command handler if specified
+            if hasattr(self, 'auto_send_packets_gui') and self.auto_send_packets_gui:
+                self.auto_send_interests()
+
+        def auto_send_interests(self):
+            """Automatically send interest packets using the GUI command handler"""
+                
+            # NN.METRICS["test_start_time"] = time.time()
+            TEST_DURATION = 30   # seconds — change this to whatever you need
+            SEND_INTERVAL = 0.5
+
+            packets = [f"/dlsu/goks/cam/capture{n}.jpg" for n in range(1, 201)]
+
+            def send_loop():
+                # ── wait for backend init ──────────────────────────────────────
+                time.sleep(3)
+
+                self.append_log("INFO",
+                    f"Timed test starting: {TEST_DURATION}s, "
+                    f"cycling {len(packets)} name(s), interval={SEND_INTERVAL}s")
+                print(f"\033[96m[AutoSend] Timed test: {TEST_DURATION}s\033[0m")
+
+                # ── reset metrics and start the clock ─────────────────────────
+                for key in ("interests_sent", "data_total_received", "data_total_sent",
+                            "failed_packets", "total_data_bytes_received",
+                            "total_data_overhead_bytes_received", "ave_RTT",
+                            "throughput", "goodput", "PDR",
+                            "data_packets_to_receive"):
+                    NN.METRICS[key] = 0 if isinstance(NN.METRICS[key], int) else 0.0
+                NN.METRICS["data_packets_to_receive_buffer"] = {}
+
+                start_time = time.time()
+                NN.METRICS["test_start_time"] = start_time
+                deadline   = start_time + TEST_DURATION
+                idx        = 0
+
+                print(f"\033[96m[AutoSend] Starting timed test loop...\033[0m")
+                # ── send loop ─────────────────────────────────────────────────
+                while time.time() < deadline:
+                    name = packets[idx % len(packets)]
+                    idx += 1
+
+                    try:
+                        interest_packet = NN.build_interest_packet(name)
+                        _, dest_port = NN.lookup_fib(name)
+                        SEND_QUEUE.put((
+                            NN.INTERFACES["face0"]["sock"],
+                            (NN.IP_ADDR, dest_port),
+                            [interest_packet]
+                        ))
+                        NN.update_metrics("interests_sent")
+                        NN.store_interest(name, None,
+                                        (NN.IP_ADDR, NN.INTERFACES["face0"]["port"]))
+
+                        elapsed   = time.time() - start_time
+                        remaining = max(0.0, deadline - time.time())
+                        # self.append_log("DEBUG",
+                        #     f"[{elapsed:5.1f}s / {remaining:5.1f}s left] "
+                        #     f"Sent Interest: {name}")
+                        print(f"\033[96m[AutoSend] Sent Interest: {name}\033[0m")
+                    except Exception as e:
+                        self.append_log("ERROR", f"[AutoSend] {e}")
+                        NN.update_metrics("failed_packets")
+
+                    # sleep for SEND_INTERVAL but bail early if deadline passed
+                    wake = time.time() + SEND_INTERVAL
+                    while time.time() < wake and time.time() < deadline:
+                        time.sleep(0.05)
+
+                # ── test over — collect and log metrics ───────────────────────
+                end_time   = time.time()
+                elapsed    = end_time - start_time
+                NN.METRICS["test_end_time"] = end_time
+
+                m = NN.get_metrics()
+
+                if elapsed > 0:
+                    m["throughput"] = m["total_data_overhead_bytes_received"] / 1024 / elapsed
+                    m["goodput"]    = m["total_data_bytes_received"] / 1024 / elapsed
+                    NN.METRICS["throughput"] = m["throughput"]
+                    NN.METRICS["goodput"]    = m["goodput"]
+
+                separator = "─" * 55
+                self.append_log("SUCCESS", separator)
+                self.append_log("SUCCESS", f"  TIMED TEST COMPLETE  ({elapsed:.2f} s)")
+                self.append_log("SUCCESS", separator)
+                self.append_log("SUCCESS", f"  Interests Sent    : {m['interests_sent']}")
+                self.append_log("SUCCESS", f"  Data Pkts Received: {m['data_total_received']}")
+                self.append_log("SUCCESS", f"  Failed Packets    : {m['failed_packets']}")
+                self.append_log("SUCCESS", f"  PDR               : {m['PDR']:.1f} %")
+                self.append_log("SUCCESS", f"  Avg RTT           : {m['ave_RTT']:.2f} ms")
+                self.append_log("SUCCESS", f"  Throughput        : {m['throughput']:.2f} KB/s")
+                self.append_log("SUCCESS", f"  Goodput           : {m['goodput']:.2f} KB/s")
+                self.append_log("SUCCESS", separator)
+
+                # Mirror to stdout so it's visible in the terminal too
+                print(f"\n\033[92m{'='*55}")
+                print(f"  TIMED TEST COMPLETE  ({elapsed:.2f} s)")
+                print(f"{'='*55}")
+                print(f"  Interests Sent    : {m['interests_sent']}")
+                print(f"  Data Pkts Received: {m['data_total_received']}")
+                print(f"  Failed Packets    : {m['failed_packets']}")
+                print(f"  PDR               : {m['PDR']:.1f} %")
+                print(f"  Avg RTT           : {m['ave_RTT']:.2f} ms")
+                print(f"  Throughput        : {m['throughput']:.2f} KB/s")
+                print(f"  Goodput           : {m['goodput']:.2f} KB/s")
+                print(f"{'='*55}\033[0m\n")
+
+            threading.Thread(target=send_loop, daemon=True, name="AutoSend").start()
 
         def quick_command(self, txt: str):
             if txt == "send interest":
@@ -695,6 +805,7 @@ if GUI_AVAILABLE:
                     # append log sent timestamp
                     from datetime import datetime
                     sent_time = datetime.now()
+                    NN.update_metrics("interest_sent_time", sent_time.timestamp())
                     self.append_log(
                         "DEBUG",
                         f"Interest '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
@@ -771,8 +882,10 @@ if GUI_AVAILABLE:
                     names = {
                         "ave_RTT": "Average RTT (ms)",
                         "PDR": "Packet Delivery Ratio (%)",
+                        "throughput": "Throughput (kbs/s)",
+                        "goodput": "Goodput (kbs/s)",
                     }
-                    for key in ["ave_RTT", "PDR"]:
+                    for key in ["ave_RTT", "PDR", "throughput", "goodput"]:
                         display_name = names.get(key, key)
                         value = metrics.get(key, 0.0)
                         entries.append((display_name, f"{value:.2f}"))
@@ -859,8 +972,9 @@ if GUI_AVAILABLE:
 def main():
     ap = argparse.ArgumentParser(description="NDN Node Runner with GUI")
     ap.add_argument("--node", help="Run a node with this node_name (per node_config.json)")
-    ap.add_argument("--client", help="Run a client with this node_name (per node_config.json)"),
+    ap.add_argument("--client", help="Run a client with this node_name (per node_config.json)")
     # ap.add_argument("--gui", action="store_true", help="Launch with GUI monitor")
+    ap.add_argument("--auto-send", action="store_true", help="Automatically send default packets on startup")
     args = ap.parse_args()
 
     if (args.node is None) == (args.client is None):
@@ -875,6 +989,8 @@ def main():
         start_mode = "client"
         node_name = args.client
 
+    auto_send = True if args.auto_send else False
+
     # Launch with or without GUI
     if not GUI_AVAILABLE:
         print("ERROR: PyQt5 is not installed. Install it with: pip install PyQt5")
@@ -882,7 +998,8 @@ def main():
         return
     else: 
         app = QApplication(sys.argv)
-        win = NodeMonitor(start_mode, node_name)
+        win = NodeMonitor(start_mode, node_name, auto_send=auto_send)
+
         win.show()
         sys.exit(app.exec_())
 
