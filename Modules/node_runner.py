@@ -135,12 +135,20 @@ def processor_thread():
                     NN.process_interest(parsed, addr, sock, SEND_QUEUE=SEND_QUEUE, interface=face)
                     end_time = time.time()
                     NN.update_metrics("processing_time", end_time - start_time)
+                    if NN.NODE_NAME.startswith("/dlsu/goks/cam"):
+                        log("DEBUG", f"FINAL Parsing Time: {NN.METRICS['parsing_time'] * 1000:.4f} ms")
+                        log("DEBUG", f"Finished processing Interest '{parsed['name']}' in {NN.METRICS['processing_time'] * 1000:.4f} ms")
                 elif parsed["type"] == "data":         
                     # Process Data 
                     start_time = time.time()
                     NN.process_data(parsed, raw_packet, sock, SEND_QUEUE=SEND_QUEUE)
                     end_time = time.time()
                     NN.update_metrics("processing_time", end_time - start_time)
+                    if parsed["frag_num"] == parsed["frag_total"] or parsed["frag_num"] is None:
+                        log("DEBUG", f"FINAL Parsing Time: {NN.METRICS['parsing_time'] * 1000:.4f} ms")
+                        log("DEBUG", f"Finished processing Data '{parsed['name']}' in {NN.METRICS['processing_time'] * 1000:.4f} ms")
+                        NN.set_metrics("parsing_time", 0)
+                        NN.set_metrics("processing_time", 0)
             except Exception as e:
                 msg = f"[Processor] Error processing packet: {e}"
                 print(msg)
@@ -196,9 +204,13 @@ def sender():
 
         try:
             sock, addr, response = task
+            start_time = time.time()
             for resp in response:
                 NN.send_packet(sock, addr, resp)
                 time.sleep(0.001)  # slight delay to avoid UDP packet loss
+            end_time = time.time()
+            NN.update_metrics("send_time", end_time - start_time)
+            log("DEBUG", f"Sent response to {addr} in {NN.METRICS['send_time'] * 1000:.4f} ms")
         except Exception as e:
             msg = f"[Sender] Error: {e}"
             print(msg)

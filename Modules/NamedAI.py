@@ -272,6 +272,9 @@ METRICS = {
     
     "func_start_time": 0,
     "func_end_time": 0,
+
+    "send_time": 0,
+    #"receive_time": 0,
 }
 
 def update_metrics(metric_name, value=1):
@@ -581,7 +584,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     """Process Interest: check CS or forward."""
     name = packet["name"]
     update_metrics("interests_received")
-    set_metrics("local_int_rcv_time", time.time())
+    # set_metrics("local_int_rcv_time", time.time())
     if METRICS["test_start_time"] == 0.0:
         METRICS["test_start_time"] = time.time()
 
@@ -672,12 +675,12 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                 forward_face, dest_port = route
                 source_port = INTERFACES[forward_face]["port"]
                 source_addr = ("127.0.0.1", source_port)
-                set_metrics("local_int_sent_time", time.time())
-                interest_delay = (
-                    METRICS["local_int_sent_time"] - METRICS["local_int_rcv_time"]
-                )
-                log("DEBUG",
-                    f"Interest '{name}' processing delay: {interest_delay * 1000:.4f} ms")
+                # set_metrics("local_int_sent_time", time.time())
+                # interest_delay = (
+                #     METRICS["local_int_sent_time"] - METRICS["local_int_rcv_time"]
+                # )
+                # log("DEBUG",
+                #     f"Interest '{name}' processing delay: {interest_delay * 1000:.4f} ms")
                 process_interest({ "name" : base_name }, source_addr, INTERFACES[forward_face]["sock"], SEND_QUEUE, None)
                 update_metrics("interests_sent")
             else:
@@ -714,8 +717,8 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                 interest_delay = (
                     METRICS["local_int_sent_time"] - METRICS["local_int_rcv_time"]
                 )
-                log("DEBUG",
-                    f"Interest '{name}' processing delay: {interest_delay * 1000:.4f} ms")
+                # log("DEBUG",
+                #     f"Interest '{name}' processing delay: {interest_delay * 1000:.4f} ms")
                 SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [interest_packet]))
                 update_metrics("interests_sent")
                 return
@@ -740,8 +743,8 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
             interest_delay = (
                 METRICS["local_int_sent_time"] - METRICS["local_int_rcv_time"]
             )
-            log("DEBUG",
-                f"Interest '{name}' processing delay: {interest_delay * 1000:.4f} ms")
+            # log("DEBUG",
+            #     f"Interest '{name}' processing delay: {interest_delay * 1000:.4f} ms")
             SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [build_interest_packet(name, dest_port, INTERFACES[forward_face]["port"])]))
 
             if METRICS["interest_sent_time"] == 0:
@@ -763,9 +766,8 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
     data = packet["data"]
     frag_num = packet.get("frag_num")
     frag_total = packet.get("frag_total")
-    if METRICS["local_data_rcv_time"] == 0:
-        METRICS["local_data_rcv_time"] = time.time()
-
+    # if METRICS["local_data_rcv_time"] == 0:
+    #     METRICS["local_data_rcv_time"] = time.time()
     with PIT_LOCK:
         if name not in METRICS["data_packets_to_receive_buffer"]:
             METRICS["data_packets_to_receive_buffer"][name] = frag_total if frag_total else 1
@@ -826,12 +828,12 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
 
                 # Non-fragmented data
                 else:
-                    set_metrics("local_data_sent_time", time.time())
-                    data_delay = (
-                        METRICS["local_data_sent_time"] - METRICS["local_data_rcv_time"]
-                        )
-                    log("DEBUG",
-                        f"Data '{name}' processing delay: {data_delay * 1000:.4f} ms")
+                    # set_metrics("local_data_sent_time", time.time())
+                    # data_delay = (
+                    #     METRICS["local_data_sent_time"] - METRICS["local_data_rcv_time"]
+                    #     )
+                    # log("DEBUG",
+                    #     f"Data '{name}' processing delay: {data_delay * 1000:.4f} ms")
                     new_packet = modify_packet(raw_packet, face)
                     SEND_QUEUE.put((sock, PIT_MAPPING[face], [new_packet]))
                     log("INFO", f"Forwarding packet for {original_name} to {PIT_MAPPING[face]}")
@@ -859,12 +861,13 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                 del FRAG_BUFFER[original_name] 
 
             # RTT
-            set_metrics("local_data_sent_time", time.time())
-            data_delay = (
-                METRICS["local_data_sent_time"] - METRICS["local_data_rcv_time"]
-                )
-            log("DEBUG",
-                f"Data '{name}' processing delay: {data_delay * 1000:.4f} ms")
+            # set_metrics("local_data_sent_time", time.time())
+
+            # data_delay = (
+            #     METRICS["local_data_sent_time"] - METRICS["local_data_rcv_time"]
+            #     )
+            # log("DEBUG",
+            #     f"Data '{name}' processing delay: {data_delay * 1000:.4f} ms")
             pit_entry = PIT[original_name]
             rtt = time.time() - pit_entry["time"]
             if METRICS["ave_RTT"] == 0.0:
@@ -887,7 +890,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                 log("INFO", "PIT is now empty.")
                 METRICS["test_end_time"] = time.time()
                 elapsed_time = METRICS["test_end_time"] - METRICS["test_start_time"]
-                log("DEBUG", f"Test completed in {time.strftime('%H:%M:%S', time.gmtime(elapsed_time))}")
+                # log("DEBUG", f"Test completed in {time.strftime('%H:%M:%S', time.gmtime(elapsed_time))}")
                 average_throughput = METRICS["total_data_overhead_bytes_received"] / 1024 / elapsed_time if elapsed_time > 0 else 0.0
                 average_goodput = METRICS["total_data_bytes_received"] / 1024 / elapsed_time if elapsed_time > 0 else 0.0
                 METRICS["throughput"] = average_throughput  # in KB/s
@@ -897,14 +900,19 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             #     update_metrics("data_packets_to_receive", METRICS["data_packets_to_receive_buffer"][original_name])
             #     del METRICS["data_packets_to_receive_buffer"][original_name]
 
-            log("DEBUG", f"Parsing time for '{original_name}': {METRICS['parsing_time'] * 1000:.4f} milliseconds")
-            log("DEBUG", f"Processing time for '{original_name}': {METRICS['processing_time'] * 1000:.4f} milliseconds")
-            set_metrics("parsing_time", 0)
-            set_metrics("processing_time", 0)
+            # log("DEBUG", f"Parsing time for '{original_name}': {METRICS['parsing_time'] * 1000:.4f} milliseconds")
+            # log("DEBUG", f"Processing time for '{original_name}': {METRICS['processing_time'] * 1000:.4f} milliseconds")
+            # set_metrics("parsing_time", 0)
+            # set_metrics("processing_time", 0)
             
             receive_time = datetime.now()
             METRICS["data_receive_time"] = receive_time.timestamp()
-
+            
+            """log("DEBUG",
+                f"sending_time for '{original_name}': {METRICS['send_time'] * 1000:.4f} milliseconds")
+            set_metrics("send_time", 0) """
+            # send interest /dlsu/goks/cam/capture8.jpg
+            
             append_metrics_to_csv({
                 "name": original_name,
                 "RTT": rtt_ms,
@@ -1109,13 +1117,12 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
 
 def apply_function_pipeline(name, data, pit_entry):
     """Apply all functions in the NFN pipeline"""
-    set_metrics("func_start_time", time.time())
     processed_data = data
     log("INFO", f"Initializing ML pipeline for '{name}', stages={pit_entry.get('funcs', [])}")
     log("INFO", f"Initial payload size: {len(data)} bytes")
     for func_name in pit_entry.get("funcs", []):
         log("INFO", f"Applying function: {func_name}")
-
+        set_metrics("func_start_time", time.time())
         if func_name not in FUNCTIONS_TABLE:
             log("ERROR", f"Function '{func_name}' not found in FUNCTIONS_TABLE")
             continue
@@ -1169,7 +1176,7 @@ def build_data_packet(name, data, dest_port=None, src_port=None):
 
     src_port = src_port - 9000 if src_port is not None else INTERFACES["face0"]["port"] - 9000
     dst_port = dest_port - 9000 if dest_port is not None else INTERFACES["face0"]["dst_port"] - 9000
-    log("DEBUG", f"Building data packet with src_port={src_port}, dest_port={dst_port}")
+    # log("DEBUG", f"Building data packet with src_port={src_port}, dest_port={dst_port}")
     
     total_frags = len(fragments)
     for idx, frag in enumerate(fragments, start=1):

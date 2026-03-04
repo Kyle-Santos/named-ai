@@ -78,16 +78,16 @@
         {
             "name": "/dlsu/goks",
             "interfaces": [
-                { "face": "face0", "port": 9004, "dst_port": 9000 },
+                { "face": "face0", "port": 9007, "dst_port": 9008 },
                 { "face": "face1", "port": 9005, "dst_port": 9010 },
                 { "face": "face2", "port": 9006, "dst_port": 9013 },
-                { "face": "face3", "port": 9007, "dst_port": 9008 }
+                { "face": "face3", "port": 9004, "dst_port": 9000 }
             ],
             "FIB": {
-                "/dlsu": { "face": "face0", "port": 9000 },
+                "/dlsu": { "face": "face3", "port": 9000 },
                 "/dlsu/andrew": { "face": "face1", "port": 9010 },
                 "/dlsu/velasco": { "face": "face2", "port": 9013 },
-                "/dlsu/goks/cam": { "face": "face3", "port": 9008 }
+                "/dlsu/goks/cam": { "face": "face0", "port": 9008 }
             },
             "storage": "nfn_nodes/goks/",
             "max_storage_mb": 50
