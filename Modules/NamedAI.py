@@ -309,7 +309,15 @@ PIT_LOCK = threading.Lock()
 PIT_MAPPING = {}  # receiving_face -> addr of sender
 
 CS = {}   # Content Store
-CS_SIZE = 100  # max number of entries in CS
+CS_SIZE = 100          # max number of entries in CS (fallback guard)
+CS_MAX_BYTES = 100 * 1024 * 1024  # default 100 MB; overridden per node via config
+CS_CURRENT_BYTES = 0   # running total of cached data size in bytes
+
+def set_cs_max_storage(max_mb: float):
+    """Configure the CS size cap (in megabytes) loaded from node_config."""
+    global CS_MAX_BYTES
+    CS_MAX_BYTES = int(max_mb * 1024 * 1024)
+    log("INFO", f"CS max storage set to {max_mb} MB ({CS_MAX_BYTES} bytes)")
 
 FIB = {}   # Forwarding Information Base
 FACES = []  # List of faces
@@ -343,34 +351,78 @@ def store_interest(name, face, addr, funcs=None, waiting_for=None):
             }
             log("SUCCESS", f"Stored Interest '{name}' in PIT")
 
-def store_data(name, data):
-    """Store data in the Content Store (CS)."""
-    if len(CS) >= CS_SIZE:
-        # Evict the oldest entry
-        oldest_name = min(CS.keys(), key=lambda k: CS[k]["timestamp"])
-        CS.pop(oldest_name)
-        log("SUCCESS", f"Evicted '{oldest_name}' to maintain CS capacity")
+def _evict_lfu():
+    """
+    Evict one CS entry using LFU policy.
+    Ties in hit_count are broken by least-recently-used (oldest timestamp).
+    """
+    global CS_CURRENT_BYTES
+    if not CS:
+        return
+    # Pick the entry with the lowest hit_count; break ties by oldest timestamp
+    victim = min(CS.keys(), key=lambda k: (CS[k]["hit_count"], CS[k]["timestamp"]))
+    freed = CS[victim]["size"]
+    CS.pop(victim)
+    CS_CURRENT_BYTES -= freed
+    log("SUCCESS",
+        f"[LFU] Evicted '{victim}' (freed {freed} bytes, CS now {CS_CURRENT_BYTES} bytes)")
 
-    CS[name] = {"data": data, "timestamp": time.time()}
-    log("SUCCESS", f"Cached '{name}' into CS (size: {len(CS)})")
+
+def store_data(name, data):
+    """Store data in the Content Store (CS) with LFU eviction when over capacity."""
+    global CS_CURRENT_BYTES
+    entry_size = len(data)
+
+    # If already cached, just refresh timestamp & size
+    if name in CS:
+        old_size = CS[name]["size"]
+        CS[name]["data"] = data
+        CS[name]["size"] = entry_size
+        CS[name]["timestamp"] = time.time()
+        CS_CURRENT_BYTES += entry_size - old_size
+        log("SUCCESS", f"Updated '{name}' in CS (size: {entry_size} bytes)")
+        return
+
+    # Evict until there is room for the new entry (LFU, tie-break by LRU)
+    while CS_CURRENT_BYTES + entry_size > CS_MAX_BYTES and CS:
+        _evict_lfu()
+
+    # Fallback entry-count guard (CS_SIZE)
+    while len(CS) >= CS_SIZE and CS:
+        _evict_lfu()
+
+    CS[name] = {
+        "data": data,
+        "timestamp": time.time(),
+        "hit_count": 0,    # cache-hit tally (incremented on each lookup_content hit)
+        "size": entry_size,
+    }
+    CS_CURRENT_BYTES += entry_size
+    log("SUCCESS",
+        f"Cached '{name}' into CS (entry_size={entry_size} B, "
+        f"CS total={CS_CURRENT_BYTES} B / {CS_MAX_BYTES} B, entries={len(CS)})")
 
 def lookup_content(name):
-    """Look up content in the Content Store (CS)."""
+    """Look up content in the Content Store (CS). Increments hit_count on a cache hit."""
     entry = CS.get(name, None)
     if entry is not None:
-        log("SUCCESS", f"CS hit for '{name}'")
+        entry["hit_count"] += 1
+        log("SUCCESS",
+            f"CS hit for '{name}' (hit_count={entry['hit_count']})")
     return entry
 
 def update_CS_timestamp(name):
-    """Update the timestamp of a CS entry to mark it as recently used."""
+    """Update the timestamp of a CS entry to mark it as recently used (LRU touch)."""
     if name in CS:
         CS[name]["timestamp"] = time.time()
-        log("SUCCESS", f"Updated CS entry for '{name}'")
+        log("SUCCESS",
+            f"Refreshed CS timestamp for '{name}' (hit_count={CS[name]['hit_count']})")
 
 def initialize_content_store(storage_path):
     """Load existing content from storage into the Content Store (CS)."""
-    global STORAGE_PATH
+    global STORAGE_PATH, CS_CURRENT_BYTES
     STORAGE_PATH = storage_path
+    CS_CURRENT_BYTES = 0  # reset on (re)init
 
     if STORAGE_PATH != "" and not os.path.exists(STORAGE_PATH):
         os.makedirs(STORAGE_PATH)

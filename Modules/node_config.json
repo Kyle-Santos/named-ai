@@ -9,7 +9,8 @@
             "FIB": {
                 "user2": { "face": "face0", "port": 9042 }
             },  
-            "storage": "client_node/storage1/"
+            "storage": "client_node/storage1/",
+            "max_storage_mb": 50
         },
 
         {
@@ -21,7 +22,8 @@
             "FIB": {
                 "user1": { "face": "face0", "port": 9002 }
             },
-            "storage": "client_node/storage2/"
+            "storage": "client_node/storage2/",
+            "max_storage_mb": 50
         },
 
         {
@@ -33,7 +35,8 @@
             "FIB": {
                 "/dlsu": { "face": "face0", "port": 9009 }
             },
-            "storage": "client_node/storage/"
+            "storage": "client_node/storage/",
+            "max_storage_mb": 50
         },
 
         {
@@ -44,7 +47,8 @@
             "FIB": {
                 "/dlsu": { "face": "face0", "port": 9003 }
             },
-            "storage": "client_node/storage/"
+            "storage": "client_node/storage/",
+            "max_storage_mb": 2
         },
 
         {
@@ -62,6 +66,7 @@
                 "user": { "face": "face3", "port": 9015 }
             },  
             "storage": "nfn_nodes/dlsu/",
+            "max_storage_mb": 1.2,
             "node_functions_mapping": {
                 "/dlsu": ["orchestrate", "recognize"],
                 "/dlsu/goks": ["detect", "resize_facenet", "resize_mfn", "resize_insightface"],
@@ -84,7 +89,8 @@
                 "/dlsu/velasco": { "face": "face2", "port": 9013 },
                 "/dlsu/goks/cam": { "face": "face3", "port": 9008 }
             },
-            "storage": "nfn_nodes/goks/"
+            "storage": "nfn_nodes/goks/",
+            "max_storage_mb": 50
         },
 
         {
@@ -99,7 +105,8 @@
                 "/dlsu/goks": { "face": "face1", "port": 9005 },
                 "/dlsu/velasco": { "face": "face2", "port": 9014 }
             },
-            "storage": "nfn_nodes/andrew/"
+            "storage": "nfn_nodes/andrew/",
+            "max_storage_mb": 50
         },
 
         {
@@ -114,7 +121,8 @@
                 "/dlsu/goks": { "face": "face1", "port": 9006 },
                 "/dlsu/andrew": { "face": "face2", "port": 9011 }
             },
-            "storage": "nfn_nodes/velasco/"
+            "storage": "nfn_nodes/velasco/",
+            "max_storage_mb": 50
         },
 
         {
@@ -125,7 +133,8 @@
             "FIB": {
                 "/dlsu/goks": { "face": "face0", "port": 9007 }
             },
-            "storage": "goks_cam_node/captures/"
+            "storage": "goks_cam_node/captures/",
+            "max_storage_mb": 500
         }
     ]
 }

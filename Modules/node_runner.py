@@ -40,6 +40,10 @@ def load_node_config(config_path: str, node_name: str):
     NN.FIB = node_config.get("FIB", {})
     NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
 
+    # Apply per-node CS storage cap (MB) before initializing content store
+    max_storage_mb = node_config.get("max_storage_mb", 100)
+    NN.set_cs_max_storage(max_storage_mb)
+
     # Initialize content store
     NN.initialize_content_store(node_config.get("storage", ""))
 
@@ -596,8 +600,8 @@ if GUI_AVAILABLE:
                 self.table.setColumnCount(3)
                 headers = ["NAME", "FACE", "TIME"]
             elif mode == "cs":
-                self.table.setColumnCount(2)
-                headers = ["NAME", "ACCESS TIME"]
+                self.table.setColumnCount(3)
+                headers = ["NAME", "HIT COUNT", "ACCESS TIME"]
             elif mode == "fib":
                 self.table.setColumnCount(3)
                 headers = ["PREFIX", "FACE", "PORT"]
@@ -860,15 +864,15 @@ if GUI_AVAILABLE:
                 if self.current_table == "cs":
                     if isinstance(cs, dict):
                         for name, meta in cs.items():
-                            # size = meta.get("size", "")
+                            hit_count = meta.get("hit_count", 0)
                             ctime = meta.get("timestamp", "")
-                            entries.append((name, time.strftime('%H:%M:%S', time.localtime(ctime))))
+                            entries.append((name, hit_count, time.strftime('%H:%M:%S', time.localtime(ctime))))
                     elif isinstance(cs, list):
                         for item in cs:
                             name = item.get("name", "")
-                            # size = item.get("size", "")
+                            hit_count = item.get("hit_count", 0)
                             ctime = item.get("timestamp", "")
-                            entries.append((name, time.strftime('%H:%M:%S', time.localtime(ctime))))
+                            entries.append((name, hit_count, time.strftime('%H:%M:%S', time.localtime(ctime))))
                 elif self.current_table == "pit":
                     if isinstance(pit, dict):
                         for name, entry in pit.items():
@@ -893,7 +897,7 @@ if GUI_AVAILABLE:
 
                 self.table.setRowCount(len(entries))
 
-                if self.current_table in ("cs", "metrics"):
+                if self.current_table in ("metrics",):
                     for r, (col1, col2) in enumerate(entries):
                         self.table.setItem(r, 0, QTableWidgetItem(str(col1)))
                         self.table.setItem(r, 1, QTableWidgetItem(str(col2)))
@@ -1003,8 +1007,6 @@ def main():
 
         win.show()
         sys.exit(app.exec_())
-
-
 
 if __name__ == "__main__":
     main()
