@@ -112,7 +112,11 @@ def processor_thread():
             face = packet_info["face"]
             addr = packet_info["addr"]
 
+            start_time = time.time()
             parsed, err = NN.parse_packet(raw_packet)
+            end_time = time.time()
+            NN.update_metrics("parsing_time", end_time - start_time)
+            
             if err:
                 msg = f"[{face}] {err}"
                 print(msg)
@@ -127,10 +131,16 @@ def processor_thread():
                 # Process based on packet type
                 if parsed["type"] == "interest":                
                     # Process Interest
+                    start_time = time.time()
                     NN.process_interest(parsed, addr, sock, SEND_QUEUE=SEND_QUEUE, interface=face)
+                    end_time = time.time()
+                    NN.update_metrics("processing_time", end_time - start_time)
                 elif parsed["type"] == "data":         
                     # Process Data 
+                    start_time = time.time()
                     NN.process_data(parsed, raw_packet, sock, SEND_QUEUE=SEND_QUEUE)
+                    end_time = time.time()
+                    NN.update_metrics("processing_time", end_time - start_time)
             except Exception as e:
                 msg = f"[Processor] Error processing packet: {e}"
                 print(msg)
