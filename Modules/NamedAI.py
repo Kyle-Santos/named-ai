@@ -285,6 +285,8 @@ METRICS = {
 
     "send_time": 0,
     #"receive_time": 0,
+    "functions":[]
+
 }
 
 def update_metrics(metric_name, value=1):
@@ -1146,6 +1148,7 @@ def apply_function_pipeline(name, data, pit_entry):
             process_delay = (
                 METRICS["func_end_time"] - METRICS["func_start_time"]
             )
+            METRICS["functions"].append((func_name, f"{(METRICS['func_end_time'] - METRICS['func_start_time']) * 1000:.4f}"))
             log("DEBUG",
             f"Processing delay for  '{func_name}': '{process_delay*1000:.4f}' ms")
         except Exception as e:
