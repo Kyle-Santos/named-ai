@@ -312,8 +312,7 @@ PIT_LOCK = threading.Lock()
 PIT_MAPPING = {}  # receiving_face -> addr of sender
 
 CS = {}   # Content Store
-CS_SIZE = 100          # max number of entries in CS (fallback guard)
-CS_MAX_BYTES = 100 * 1024 * 1024  # default 100 MB; overridden per node via config
+CS_MAX_BYTES = 10 * 1024 * 1024  # default 10 MB; overridden per node via config
 CS_CURRENT_BYTES = 0   # running total of cached data size in bytes
 
 def set_cs_max_storage(max_mb: float):
@@ -388,10 +387,6 @@ def store_data(name, data):
 
     # Evict until there is room for the new entry (LFU, tie-break by LRU)
     while CS_CURRENT_BYTES + entry_size > CS_MAX_BYTES and CS:
-        _evict_lfu()
-
-    # Fallback entry-count guard (CS_SIZE)
-    while len(CS) >= CS_SIZE and CS:
         _evict_lfu()
 
     CS[name] = {
@@ -649,7 +644,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                 dest_addr = ("127.0.0.1", dest_port)
 
                 # Build Interest packet
-                interest_packet = build_interest_packet(name, dest_port)
+                interest_packet = build_interest_packet(name, dest_port, INTERFACES[forward_face]["port"])
                 log("INFO", f"Forwarding Interest for '{name}' to {forward_face}")
 
                 # store interest to PIT
@@ -692,7 +687,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
             )
             log("DEBUG",
                 f"Interest '{name}' processing delay: {interest_delay * 1000:.4f} ms")
-            SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [build_interest_packet(name, dest_port)]))
+            SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [build_interest_packet(name, dest_port, INTERFACES[forward_face]["port"])]))
 
             if METRICS["interest_sent_time"] == 0:
                 METRICS["interest_sent_time"] = datetime.now().timestamp()
@@ -1090,12 +1085,12 @@ def apply_function_pipeline(name, data, pit_entry):
 # Packet Builders #
 ###################
 
-def build_interest_packet(name, dest_port=None):
+def build_interest_packet(name, dest_port=None, src_port=None):
     name_bytes = name.encode()
     identifier = (packetStruct.PROTOCOL_VERSION << 6) | (packetStruct.PACKET_TYPE_INTEREST << 4)
     header = struct.pack(packetStruct.IDENTIFIER_FORMAT, identifier)
-    src_port = INTERFACES["face0"]["port"] - 9000
-    dst_port = dest_port - 9000 if dest_port is not None else INTERFACES["face0"]["dst_port"]
+    src_port = src_port - 9000 if src_port is not None else INTERFACES["face0"]["port"] - 9000
+    dst_port = dest_port - 9000 if dest_port is not None else INTERFACES["face0"]["dst_port"] - 9000
     header += struct.pack(packetStruct.ADDRESS_FORMAT, (src_port << 4) | dst_port) # 4 bits src_port, 4 bits dst_port
     header += struct.pack(packetStruct.NAME_LENGTH_FORMAT, len(name_bytes))
     core = header + name_bytes
@@ -1110,8 +1105,12 @@ def build_data_packet(name, data, dest_port=None, src_port=None):
     data_bytes = data
 
     packets = []
-    fragments = fragment_data(data_bytes, max_payload=256-(12+len(name)))  # 5 bytes for header fields, rest for payload
+    fragments = fragment_data(data_bytes, max_payload=255-(12+len(name)))  # 5 bytes for header fields, rest for payload
 
+    src_port = src_port - 9000 if src_port is not None else INTERFACES["face0"]["port"] - 9000
+    dst_port = dest_port - 9000 if dest_port is not None else INTERFACES["face0"]["dst_port"] - 9000
+    log("DEBUG", f"Building data packet with src_port={src_port}, dest_port={dst_port}")
+    
     total_frags = len(fragments)
     for idx, frag in enumerate(fragments, start=1):
         # only add [x:y] if more than one fragment
@@ -1122,9 +1121,6 @@ def build_data_packet(name, data, dest_port=None, src_port=None):
 
         identifier = (packetStruct.PROTOCOL_VERSION << 6) | (packetStruct.PACKET_TYPE_DATA << 4)
         header = struct.pack(packetStruct.IDENTIFIER_FORMAT, identifier)
-
-        src_port = INTERFACES["face0"]["port"] - 9000
-        dst_port = dest_port - 9000 if dest_port is not None else INTERFACES["face0"]["dst_port"]
         header += struct.pack(packetStruct.ADDRESS_FORMAT, (src_port << 4) | dst_port) # 4 bits src_port, 4 bits dst_port
         header += struct.pack(packetStruct.NAME_LENGTH_FORMAT, len(frag_name))
         header += struct.pack(packetStruct.DATA_LENGTH_FORMAT, len(frag))
@@ -1134,7 +1130,7 @@ def build_data_packet(name, data, dest_port=None, src_port=None):
 
         packet = packetStruct.PREAMBLE + core + checksum + packetStruct.POSTAMBLE
         packets.append(packet)
-        log("SUCCESS", f"Built data packet for '{name}' fragment {idx}/{total_frags}")
+        log("SUCCESS", f"Built data packet for '{name}' fragment {idx}/{total_frags} (size={len(packet)} bytes) (namesize={len(frag_name)} bytes, payload={len(frag)} bytes)")
 
     return packets
 
@@ -1145,5 +1141,5 @@ def fragment_data(data_bytes, max_payload=128):
     Returns a list of fragments
     """
     num_frags = str(len(data_bytes) // max_payload) if len(data_bytes) > max_payload else ""
-    max_payload = max_payload - len(num_frags)
+    max_payload = max_payload - (2 * len(num_frags))
     return [data_bytes[i:i+max_payload] for i in range(0, len(data_bytes), max_payload)]

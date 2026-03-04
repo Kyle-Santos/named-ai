@@ -41,7 +41,7 @@ def load_node_config(config_path: str, node_name: str):
     NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
 
     # Apply per-node CS storage cap (MB) before initializing content store
-    max_storage_mb = node_config.get("max_storage_mb", 100)
+    max_storage_mb = node_config.get("max_storage_mb", 10)
     NN.set_cs_max_storage(max_storage_mb)
 
     # Initialize content store

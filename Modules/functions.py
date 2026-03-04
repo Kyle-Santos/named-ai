@@ -293,9 +293,9 @@ def _is_node_busy(node, func, PIT):
 # FACEBANK MANAGEMENT
 def load_facebank():
     facebanks = {
-        "insightface": "facebanks\\facebank_insightface.pt",
-        "facenet": "facebanks\\facebank_facenet.pkl",
-        "mobilefacenet": "facebanks\\facebank_mobilefacenet1.pkl",
+        "insightface": "facebanks/facebank_insightface.pt",
+        "facenet": "facebanks/facebank_facenet.pkl",
+        "mobilefacenet": "facebanks/facebank_mobilefacenet1.pkl",
     }
 
     for model, path in facebanks.items():
