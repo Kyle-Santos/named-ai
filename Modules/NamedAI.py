@@ -249,7 +249,7 @@ METRICS = {
 
     "data_overhead_bytes_received_per_name": 0, 
     "data_bytes_received_per_name": 0, # data bytes per name
-
+    
     "ave_RTT": 0.0,  # in milliseconds
     "PDR": 0.0, 
     "latency": 0.0,
@@ -267,7 +267,6 @@ METRICS = {
     "local_int_sent_time": 0,
     "local_data_rcv_time": 0,
     "local_data_sent_time": 0,
-
     "parsing_time": 0,
     "processing_time": 0,
 }
@@ -355,15 +354,22 @@ def store_interest(name, face, addr, funcs=None, waiting_for=None):
             log("SUCCESS", f"Stored Interest '{name}' in PIT")
 
 def _get_storage_filename(name):
-    """Derive the on-disk filename for a CS entry — mirrors save_data_to_file naming."""
+    """Derive the on-disk filename for a CS entry — mirrors save_data_to_file naming.
+    Strips any existing extension first to avoid double-extensions (e.g. .jpg.jpg)
+    when the CS key itself was loaded from a filename that already had an extension.
+    """
     if not STORAGE_PATH:
         return None
+    # Strip leading slash, replace path separators with underscores
+    base = name[1:].replace("/", "_")
+    # Remove any existing file extension so we never produce e.g. .jpg.jpg
+    base = os.path.splitext(base)[0]
     if "recognize" in name:
-        return os.path.join(STORAGE_PATH, name[1:].replace("/", "_")) + ".txt"
+        return os.path.join(STORAGE_PATH, base) + ".txt"
     elif "embedding" in name:
-        return os.path.join(STORAGE_PATH, name[1:].replace("/", "_")) + ".npy"
+        return os.path.join(STORAGE_PATH, base) + ".npy"
     else:
-        return os.path.join(STORAGE_PATH, name[1:].replace("/", "_")) + ".jpg"
+        return os.path.join(STORAGE_PATH, base) + ".jpg"
 
 
 def _evict_lfu():
@@ -377,7 +383,18 @@ def _evict_lfu():
         return
     # Pick the entry with the lowest hit_count; break ties by oldest timestamp
     victim = min(CS.keys(), key=lambda k: (CS[k]["hit_count"], CS[k]["timestamp"]))
-    freed = CS[victim]["size"]
+    freed      = CS[victim]["size"]
+    hit        = CS[victim]["hit_count"]
+    ts         = CS[victim]["timestamp"]
+
+    # Determine if this was a hit_count eviction or a timestamp tiebreak
+    min_hits   = min(CS[k]["hit_count"] for k in CS)
+    tied       = sum(1 for k in CS if CS[k]["hit_count"] == min_hits)
+    if tied > 1:
+        reason = f"hit_count={hit} (timestamp tiebreak — oldest among {tied} tied entries)"
+    else:
+        reason = f"hit_count={hit} (least frequently used)"
+
     CS.pop(victim)
     CS_CURRENT_BYTES -= freed
 
@@ -387,14 +404,14 @@ def _evict_lfu():
         try:
             os.remove(filepath)
             log("SUCCESS",
-                f"[LFU] Evicted '{victim}' from CS and disk "
+                f"[LFU] Evicted '{victim}' from CS and disk — {reason} "
                 f"(freed {freed} bytes, CS now {CS_CURRENT_BYTES} bytes)")
         except OSError as e:
             log("WARN",
                 f"[LFU] Evicted '{victim}' from CS but failed to delete file: {e}")
     else:
         log("SUCCESS",
-            f"[LFU] Evicted '{victim}' from CS (no disk file) "
+            f"[LFU] Evicted '{victim}' from CS (no disk file) — {reason} "
             f"(freed {freed} bytes, CS now {CS_CURRENT_BYTES} bytes)")
 
 
@@ -402,6 +419,13 @@ def store_data(name, data):
     """Store data in the Content Store (CS) with LFU eviction when over capacity."""
     global CS_CURRENT_BYTES
     entry_size = len(data)
+
+    # Reject immediately if the entry alone exceeds the entire CS capacity
+    if entry_size > CS_MAX_BYTES:
+        log("WARN",
+            f"Image over size: '{name}' ({entry_size} B) exceeds CS capacity "
+            f"({CS_MAX_BYTES} B) — not cached")
+        return
 
     # If already cached, update data/size/timestamp but preserve hit_count
     if name in CS:
