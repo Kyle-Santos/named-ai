@@ -249,7 +249,7 @@ METRICS = {
 
     "data_overhead_bytes_received_per_name": 0, 
     "data_bytes_received_per_name": 0, # data bytes per name
-
+    
     "ave_RTT": 0.0,  # in milliseconds
     "PDR": 0.0, 
     "latency": 0.0,
@@ -267,9 +267,11 @@ METRICS = {
     "local_int_sent_time": 0,
     "local_data_rcv_time": 0,
     "local_data_sent_time": 0,
-
     "parsing_time": 0,
     "processing_time": 0,
+    
+    "func_start_time": 0,
+    "func_end_time": 0,
 }
 
 def update_metrics(metric_name, value=1):
@@ -353,21 +355,66 @@ def store_interest(name, face, addr, funcs=None, waiting_for=None):
             }
             log("SUCCESS", f"Stored Interest '{name}' in PIT")
 
+def _get_storage_filename(name):
+    """Derive the on-disk filename for a CS entry — mirrors save_data_to_file naming.
+    Strips any existing extension first to avoid double-extensions (e.g. .jpg.jpg)
+    when the CS key itself was loaded from a filename that already had an extension.
+    """
+    if not STORAGE_PATH:
+        return None
+    # Strip leading slash, replace path separators with underscores
+    base = name[1:].replace("/", "_")
+    # Remove any existing file extension so we never produce e.g. .jpg.jpg
+    base = os.path.splitext(base)[0]
+    if "recognize" in name:
+        return os.path.join(STORAGE_PATH, base) + ".txt"
+    elif "embedding" in name:
+        return os.path.join(STORAGE_PATH, base) + ".npy"
+    else:
+        return os.path.join(STORAGE_PATH, base) + ".jpg"
+
+
 def _evict_lfu():
     """
     Evict one CS entry using LFU policy.
     Ties in hit_count are broken by least-recently-used (oldest timestamp).
+    Also deletes the corresponding file from disk so storage stays in sync.
     """
     global CS_CURRENT_BYTES
     if not CS:
         return
     # Pick the entry with the lowest hit_count; break ties by oldest timestamp
     victim = min(CS.keys(), key=lambda k: (CS[k]["hit_count"], CS[k]["timestamp"]))
-    freed = CS[victim]["size"]
+    freed      = CS[victim]["size"]
+    hit        = CS[victim]["hit_count"]
+    ts         = CS[victim]["timestamp"]
+
+    # Determine if this was a hit_count eviction or a timestamp tiebreak
+    min_hits   = min(CS[k]["hit_count"] for k in CS)
+    tied       = sum(1 for k in CS if CS[k]["hit_count"] == min_hits)
+    if tied > 1:
+        reason = f"hit_count={hit} (timestamp tiebreak — oldest among {tied} tied entries)"
+    else:
+        reason = f"hit_count={hit} (least frequently used)"
+
     CS.pop(victim)
     CS_CURRENT_BYTES -= freed
-    log("SUCCESS",
-        f"[LFU] Evicted '{victim}' (freed {freed} bytes, CS now {CS_CURRENT_BYTES} bytes)")
+
+    # Delete from disk — keep storage directory in sync with CS
+    filepath = _get_storage_filename(victim)
+    if filepath and os.path.isfile(filepath):
+        try:
+            os.remove(filepath)
+            log("SUCCESS",
+                f"[LFU] Evicted '{victim}' from CS and disk — {reason} "
+                f"(freed {freed} bytes, CS now {CS_CURRENT_BYTES} bytes)")
+        except OSError as e:
+            log("WARN",
+                f"[LFU] Evicted '{victim}' from CS but failed to delete file: {e}")
+    else:
+        log("SUCCESS",
+            f"[LFU] Evicted '{victim}' from CS (no disk file) — {reason} "
+            f"(freed {freed} bytes, CS now {CS_CURRENT_BYTES} bytes)")
 
 
 def store_data(name, data):
@@ -375,14 +422,22 @@ def store_data(name, data):
     global CS_CURRENT_BYTES
     entry_size = len(data)
 
-    # If already cached, just refresh timestamp & size
+    # Reject immediately if the entry alone exceeds the entire CS capacity
+    if entry_size > CS_MAX_BYTES:
+        log("WARN",
+            f"Image over size: '{name}' ({entry_size} B) exceeds CS capacity "
+            f"({CS_MAX_BYTES} B) — not cached")
+        return
+
+    # If already cached, update data/size/timestamp but preserve hit_count
     if name in CS:
         old_size = CS[name]["size"]
         CS[name]["data"] = data
         CS[name]["size"] = entry_size
         CS[name]["timestamp"] = time.time()
+        # hit_count intentionally preserved
         CS_CURRENT_BYTES += entry_size - old_size
-        log("SUCCESS", f"Updated '{name}' in CS (size: {entry_size} bytes)")
+        log("SUCCESS", f"Updated '{name}' in CS (size: {entry_size} bytes, hit_count preserved={CS[name]['hit_count']})")
         return
 
     # Evict until there is room for the new entry (LFU, tie-break by LRU)
@@ -987,10 +1042,9 @@ def save_data_to_file(name, data_bytes):
     else:
         filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_')) + ".jpg"
 
-    if name not in CS:
-        store_data(name, data_bytes)
-    else:
-        update_CS_timestamp(name)
+    # Always go through store_data — it handles both new entries and updates,
+    # and keeps CS_CURRENT_BYTES accurate. hit_count is preserved for existing entries.
+    store_data(name, data_bytes)
 
     with open(filename, "wb") as f:
         f.write(data_bytes)
@@ -1026,8 +1080,8 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
     """Process Named Function Networking request"""
     log("INFO", f"Starting In-Network Function processing for '{name}', waiting_for = '{waiting_for_name}'")
     log("INFO", f"Assembling workflow: funcs={pit_entry.get('funcs', [])}")
-    # Save the original data
-    if lookup_content(waiting_for_name) is None and waiting_for_name not in CS:
+    # Save the original data (use direct CS check — lookup_content would falsely increment hit_count)
+    if waiting_for_name not in CS:
         save_data_to_file(waiting_for_name, full_data)
     cleanup_flags["delete_waiting_for"] = True
 
@@ -1055,6 +1109,7 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
 
 def apply_function_pipeline(name, data, pit_entry):
     """Apply all functions in the NFN pipeline"""
+    set_metrics("func_start_time", time.time())
     processed_data = data
     log("INFO", f"Initializing ML pipeline for '{name}', stages={pit_entry.get('funcs', [])}")
     log("INFO", f"Initial payload size: {len(data)} bytes")
@@ -1071,12 +1126,17 @@ def apply_function_pipeline(name, data, pit_entry):
             f"input={len(processed_data)} bytes")
             processed_data = func(processed_data)
             log("INFO", f"Function '{func_name}' completed successfully")
+            set_metrics("func_end_time", time.time())
+            process_delay = (
+                METRICS["func_end_time"] - METRICS["func_start_time"]
+            )
+            log("DEBUG",
+            f"Processing delay for  '{func_name}': '{process_delay*1000:.4f}' ms")
         except Exception as e:
             log("ERROR", f"Function '{func_name}' failed: {e}")
             import traceback
             traceback.print_exc()
             # Continue with unprocessed data
-
     return processed_data
 
 
