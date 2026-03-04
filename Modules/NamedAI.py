@@ -889,7 +889,7 @@ def save_data_to_file(name, data_bytes):
     elif "embedding" in name:
         filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_')) + ".npy"
     else:
-        filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_')) + ".jpg"
+        filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_'))
 
     if name not in CS:
         store_data(name, data_bytes)
