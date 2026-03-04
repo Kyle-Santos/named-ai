@@ -5,8 +5,8 @@ python = sys.executable  # automatically uses Python 3.11 if that's what you ran
 
 commands = [
     [python, "./node_runner.py", "--node", "/dlsu/goks/cam"],
-    [python, "./node_runner.py", "--node", "/dlsu/goks"],
-    [python, "./node_runner.py", "--node", "/dlsu"],
+    # [python, "./node_runner.py", "--node", "/dlsu/goks"],
+    # [python, "./node_runner.py", "--node", "/dlsu"],
     # [python, "./node_runner.py", "--node", "/dlsu/andrew"],
     # [python, "./node_runner.py", "--node", "/dlsu/velasco"],
     # [python, "./node_runner.py", "--client", "user", "--auto-send"],

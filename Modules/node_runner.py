@@ -42,13 +42,15 @@ def load_node_config(config_path: str, node_name: str):
     NN.NODE_NAME = node_config["name"]
     NN.FIB = node_config.get("FIB", {})
     NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
+    NN.XBEE_PORT = node_config.get("xbee_port", None)
 
     # Initialize content store
     NN.initialize_content_store(node_config.get("storage", ""))
 
     NN.NODE_FUNCTIONS_MAPPING = node_config.get("node_functions_mapping", {})
     
-    functions_list = cam["node_functions_mapping"].get(NN.NODE_NAME, []) 
+    # functions_list = cam["node_functions_mapping"].get(NN.NODE_NAME, []) 
+    functions_list = []
     print(f"Functions for {NN.NODE_NAME}: {functions_list}")
     for func_name in functions_list:
         if func_name == "detect":
@@ -170,7 +172,7 @@ def sender():
             sock, addr, response = task
             for resp in response:
                 NN.send_packet(sock, addr, resp)
-                time.sleep(0.01)  # slight delay to avoid UDP packet loss
+                time.sleep(0.001)  # slight delay to avoid UDP packet loss
         except Exception as e:
             msg = f"[Sender] Error: {e}"
             print(msg)
@@ -784,7 +786,7 @@ if GUI_AVAILABLE:
                     print(f"[DEBUG] Raw Interest Packet: {interest_packet}")
                     print(f"[DEBUG] Packet Size: {len(interest_packet)} bytes")
                                 
-                    SEND_QUEUE.put((NN.INTERFACES["face0"]["sock"], (NN.IP_ADDR, dest_port), [interest_packet]))
+                    SEND_QUEUE.put((NN.INTERFACES["face0"]["sock"], ("", dest_port), [interest_packet]))
                     
                     # 10.0.0.106
                     # SEND_QUEUE.put((NN.INTERFACES["face0"]["sock"], ("10.0.0.106", dest_port), [interest_packet]))

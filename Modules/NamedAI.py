@@ -33,10 +33,11 @@ def log(level, message, path=""):
 # Communication Module  #
 #########################
 # IP_ADDR = "127.0.0.1"
-BAUD_RATE = 57600
+BAUD_RATE = 115200
+XBEE_PORT = None
 
-def create_serial_connection(port):
-    ser = serial.Serial(port, BAUD_RATE, timeout=0, rtscts=True)
+def create_serial_connection():
+    ser = serial.Serial(XBEE_PORT, BAUD_RATE, timeout=0, rtscts=True)
     time.sleep(1)  # XBee warmup
     return ser
 
@@ -55,12 +56,12 @@ def create_interface(interfaces):
     Returns:
         dict: { face: { "sock": socket, "face": face, "port": port, "dst_port": dst_port } }
     """
+    ser = create_serial_connection()
+    
     for interface in interfaces:
         face = interface["face"]
         port = interface["port"] 
         dst_port = interface["dst_port"] 
-
-        ser = create_serial_connection(port)
 
         INTERFACES[face] = {
             "sock": ser,          # keep key name 'sock' so rest of code works
@@ -1070,8 +1071,11 @@ def build_data_packet(name, data, dest_port=None, src_port=None):
     data_bytes = data
 
     packets = []
-    fragments = fragment_data(data_bytes, max_payload=128-(5+len(name)))  # 5 bytes for header fields, rest for payload
+    fragments = fragment_data(data_bytes, max_payload=256-(12+len(name)))  # 5 bytes for header fields, rest for payload
 
+    src_port = src_port - 9000 if src_port is not None else INTERFACES["face0"]["port"] - 9000
+    dst_port = dest_port - 9000 if dest_port is not None else INTERFACES["face0"]["dst_port"]
+    
     total_frags = len(fragments)
     for idx, frag in enumerate(fragments, start=1):
         # only add [x:y] if more than one fragment
@@ -1082,9 +1086,6 @@ def build_data_packet(name, data, dest_port=None, src_port=None):
 
         identifier = (packetStruct.PROTOCOL_VERSION << 6) | (packetStruct.PACKET_TYPE_DATA << 4)
         header = struct.pack(packetStruct.IDENTIFIER_FORMAT, identifier)
-
-        src_port = INTERFACES["face0"]["port"] - 9000
-        dst_port = dest_port - 9000 if dest_port is not None else INTERFACES["face0"]["dst_port"]
         header += struct.pack(packetStruct.ADDRESS_FORMAT, (src_port << 4) | dst_port) # 4 bits src_port, 4 bits dst_port
         header += struct.pack(packetStruct.NAME_LENGTH_FORMAT, len(frag_name))
         header += struct.pack(packetStruct.DATA_LENGTH_FORMAT, len(frag))
@@ -1104,4 +1105,6 @@ def fragment_data(data_bytes, max_payload=128):
     Splits data into fragments if > max_payload.
     Returns a list of fragments
     """
+    num_frags = str(len(data_bytes) // max_payload)  if len(data_bytes) > max_payload else ""
+    max_payload = max_payload - (2 * len(num_frags)) 
     return [data_bytes[i:i+max_payload] for i in range(0, len(data_bytes), max_payload)]
