@@ -188,7 +188,7 @@ def sender():
             sock, addr, response = task
             for resp in response:
                 NN.send_packet(sock, addr, resp)
-                time.sleep(0.01)  # slight delay to avoid UDP packet loss
+                time.sleep(0.001)  # slight delay to avoid UDP packet loss
         except Exception as e:
             msg = f"[Sender] Error: {e}"
             print(msg)

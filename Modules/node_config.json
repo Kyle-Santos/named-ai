@@ -48,7 +48,7 @@
                 "/dlsu": { "face": "face0", "port": 9003 }
             },
             "storage": "client_node/storage/",
-            "max_storage_mb": 2
+            "max_storage_mb": 10
         },
 
         {
@@ -66,7 +66,7 @@
                 "user": { "face": "face3", "port": 9015 }
             },  
             "storage": "nfn_nodes/dlsu/",
-            "max_storage_mb": 1.2,
+            "max_storage_mb": 1,
             "node_functions_mapping": {
                 "/dlsu": ["orchestrate", "recognize"],
                 "/dlsu/goks": ["detect", "resize_facenet", "resize_mfn", "resize_insightface"],
