@@ -249,7 +249,7 @@ METRICS = {
 
     "data_overhead_bytes_received_per_name": 0, 
     "data_bytes_received_per_name": 0, # data bytes per name
-    
+
     "ave_RTT": 0.0,  # in milliseconds
     "PDR": 0.0, 
     "latency": 0.0,
@@ -267,6 +267,9 @@ METRICS = {
     "local_int_sent_time": 0,
     "local_data_rcv_time": 0,
     "local_data_sent_time": 0,
+
+    "parsing_time": 0,
+    "processing_time": 0,
 }
 
 def update_metrics(metric_name, value=1):
@@ -658,7 +661,9 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
     data = packet["data"]
     frag_num = packet.get("frag_num")
     frag_total = packet.get("frag_total")
-    set_metrics("local_data_rcv_time", time.time())
+    if METRICS["local_data_rcv_time"] == 0:
+        METRICS["local_data_rcv_time"] = time.time()
+
     with PIT_LOCK:
         if name not in METRICS["data_packets_to_receive_buffer"]:
             METRICS["data_packets_to_receive_buffer"][name] = frag_total if frag_total else 1
@@ -790,6 +795,10 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             #     update_metrics("data_packets_to_receive", METRICS["data_packets_to_receive_buffer"][original_name])
             #     del METRICS["data_packets_to_receive_buffer"][original_name]
 
+            log("DEBUG", f"Parsing time for '{original_name}': {METRICS['parsing_time'] * 1000:.4f} milliseconds")
+            log("DEBUG", f"Processing time for '{original_name}': {METRICS['processing_time'] * 1000:.4f} milliseconds")
+            set_metrics("parsing_time", 0)
+            set_metrics("processing_time", 0)
             
             receive_time = datetime.now()
             METRICS["data_receive_time"] = receive_time.timestamp()
@@ -1049,7 +1058,7 @@ def build_data_packet(name, data, dest_port=None, src_port=None):
     data_bytes = data
 
     packets = []
-    fragments = fragment_data(data_bytes, max_payload=128-(5+len(name)))  # 5 bytes for header fields, rest for payload
+    fragments = fragment_data(data_bytes, max_payload=256-(12+len(name)))  # 5 bytes for header fields, rest for payload
 
     total_frags = len(fragments)
     for idx, frag in enumerate(fragments, start=1):
@@ -1083,4 +1092,6 @@ def fragment_data(data_bytes, max_payload=128):
     Splits data into fragments if > max_payload.
     Returns a list of fragments
     """
+    num_frags = str(len(data_bytes) // max_payload) if len(data_bytes) > max_payload else ""
+    max_payload = max_payload - len(num_frags)
     return [data_bytes[i:i+max_payload] for i in range(0, len(data_bytes), max_payload)]
