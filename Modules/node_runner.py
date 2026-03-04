@@ -62,9 +62,9 @@ def load_node_config(config_path: str, node_name: str):
         #     functions.load_insightface()
         #     print("InsightFace model loaded.")
 
-        if func_name == "facenet_embedding":
-            functions.load_facenet()
-            print("Facenet model loaded.")
+        # if func_name == "facenet_embedding":
+        #     functions.load_facenet()
+        #     print("Facenet model loaded.")
 
         if func_name == "mfn_embedding":
             functions.load_mfn()
