@@ -263,10 +263,10 @@ METRICS = {
     "data_sent_time": 0,
     "data_receive_time": 0,
 
-    "local_int_rcv_time": None,
-    "local_int_sent_time": None,
-    "local_data_rcv_time": None,
-    "local_data_sent_time": None,
+    "local_int_rcv_time": 0,
+    "local_int_sent_time": 0,
+    "local_data_rcv_time": 0,
+    "local_data_sent_time": 0,
 }
 
 def update_metrics(metric_name, value=1):
@@ -571,7 +571,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                 interest_delay = (
                     METRICS["local_int_sent_time"] - METRICS["local_int_rcv_time"]
                 )
-                log("DEBUG"
+                log("DEBUG",
                     f"Interest '{name}' processing delay: {interest_delay * 1000:.4f} ms")
                 process_interest({ "name" : base_name }, source_addr, INTERFACES[forward_face]["sock"], SEND_QUEUE, None)
                 update_metrics("interests_sent")
@@ -609,7 +609,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                 interest_delay = (
                     METRICS["local_int_sent_time"] - METRICS["local_int_rcv_time"]
                 )
-                log("DEBUG"
+                log("DEBUG",
                     f"Interest '{name}' processing delay: {interest_delay * 1000:.4f} ms")
                 SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [interest_packet]))
                 update_metrics("interests_sent")
@@ -635,7 +635,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
             interest_delay = (
                 METRICS["local_int_sent_time"] - METRICS["local_int_rcv_time"]
             )
-            log("DEBUG"
+            log("DEBUG",
                 f"Interest '{name}' processing delay: {interest_delay * 1000:.4f} ms")
             SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [build_interest_packet(name, dest_port)]))
 
@@ -658,7 +658,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
     data = packet["data"]
     frag_num = packet.get("frag_num")
     frag_total = packet.get("frag_total")
-    set_metrics("local_data_rcv", time.time())
+    set_metrics("local_data_rcv_time", time.time())
     with PIT_LOCK:
         if name not in METRICS["data_packets_to_receive_buffer"]:
             METRICS["data_packets_to_receive_buffer"][name] = frag_total if frag_total else 1
@@ -703,12 +703,6 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                         log("SUCCESS", f"Buffered fragment {frag_num}/{frag_total} for '{name}'")
 
                     # Forward the fragment
-                    set_metrics("local_data_sent_time", time.time())
-                    data_delay = (
-                        METRICS["local_data_sent_time"] - METRICS["local_data_rcv_time"]
-                        )
-                    log("DEBUG"
-                        f"Data '{name}' processing delay: {data_delay * 1000:.4f} ms")
                     new_packet = modify_packet(raw_packet, face)
                     SEND_QUEUE.put((sock, PIT_MAPPING[face], [new_packet]))
                     log("INFO", f"Forwarding fragment {frag_num}/{frag_total} for {name} to {PIT_MAPPING[face]}")
@@ -729,7 +723,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                     data_delay = (
                         METRICS["local_data_sent_time"] - METRICS["local_data_rcv_time"]
                         )
-                    log("DEBUG"
+                    log("DEBUG",
                         f"Data '{name}' processing delay: {data_delay * 1000:.4f} ms")
                     new_packet = modify_packet(raw_packet, face)
                     SEND_QUEUE.put((sock, PIT_MAPPING[face], [new_packet]))
@@ -758,6 +752,12 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                 del FRAG_BUFFER[original_name] 
 
             # RTT
+            set_metrics("local_data_sent_time", time.time())
+            data_delay = (
+                METRICS["local_data_sent_time"] - METRICS["local_data_rcv_time"]
+                )
+            log("DEBUG",
+                f"Data '{name}' processing delay: {data_delay * 1000:.4f} ms")
             pit_entry = PIT[original_name]
             rtt = time.time() - pit_entry["time"]
             if METRICS["ave_RTT"] == 0.0:

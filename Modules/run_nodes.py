@@ -6,10 +6,10 @@ commands = [
     ["python", ".\\node_runner.py", "--node", "/dlsu"],
     #["python", ".\\node_runner.py", "--node", "/dlsu/andrew"],
     #["python", ".\\node_runner.py", "--node", "/dlsu/velasco"],
-    ["python", ".\\node_runner.py", "--client", "user1", "--auto-send"],
-    # ["python", ".\\node_runner.py", "--client", "user2"],
-    # ["python", ".\\node_runner.py", "--client", "user3", "--auto-send"],
-    #["python", ".\\node_runner.py", "--client", "user4", "--auto-send"]
+    #["python", ".\\node_runner.py", "--client", "user1"],
+    #["python", ".\\node_runner.py", "--client", "user2"],
+    #["python", ".\\node_runner.py", "--client", "user3"],
+    ["python", ".\\node_runner.py", "--client", "user"]
 ]
 
 # List to keep track of running processes
