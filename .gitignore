@@ -1,4 +1,5 @@
 Modules/goks_cam_node/kagglehub
+Modules/goks_cam_node/captures
 Modules/client_node/*.jpg
 Modules/client_node/storage/*
 Modules/nfn_nodes/goks/*

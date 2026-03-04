@@ -36,8 +36,10 @@ PACKET_TYPE_DATA     = 0b01 # 1
 # I = unsigned int (4 bytes / 32 bits)
 
 IDENTIFIER_FORMAT = '!B' # Identifier field (1 byte)
+ADDRESS_FORMAT = '!B' # Address field (1 byte) SSSSDDDD (Source and Destination)
 NAME_LENGTH_FORMAT = '!B' # Name Length field (1 byte)
-DATA_LENGTH_FORMAT = '!I'  # Data Length field (4 bytes)
+# DATA_LENGTH_FORMAT = '!I'  # Data Length field (4 bytes)
+DATA_LENGTH_FORMAT = '!B'  # Data Length field (1 byte)
 CHECKSUM_FORMAT = '!B' # Checksum (FCS) field (1 byte)
 
 
@@ -46,6 +48,7 @@ CHECKSUM_FORMAT = '!B' # Checksum (FCS) field (1 byte)
 # Not including Name since it is variable length
 FIXED_HEADER_SIZE_INTEREST = (
     struct.calcsize(IDENTIFIER_FORMAT) +
+    struct.calcsize(ADDRESS_FORMAT) +
     struct.calcsize(NAME_LENGTH_FORMAT) +
     struct.calcsize(CHECKSUM_FORMAT)
 )
@@ -54,6 +57,7 @@ FIXED_HEADER_SIZE_INTEREST = (
 # Not including Name and Data since those are variable length
 FIXED_HEADER_SIZE_DATA = (
     struct.calcsize(IDENTIFIER_FORMAT) +
+    struct.calcsize(ADDRESS_FORMAT) +
     struct.calcsize(NAME_LENGTH_FORMAT) +
     struct.calcsize(DATA_LENGTH_FORMAT) +
     struct.calcsize(CHECKSUM_FORMAT) 

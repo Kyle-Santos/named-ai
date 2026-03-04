@@ -6,6 +6,9 @@ import re
 import os
 import time
 import threading
+import csv
+from datetime import datetime
+import struct
 
 LOGS = []
 GUI_CALLBACK = None
@@ -51,24 +54,26 @@ def create_interface(interfaces):
     Args:
         interfaces (list): Example:
             [
-                {"face": "face0", "port": 9010},
-                {"face": "face1", "port": 9011}
+                {"face": "face0", "port": 9010, "dst_port": 9000},
+                {"face": "face1", "port": 9011, "dst_port": 9020}
             ]
         bind_ip (str): IP to bind (default: localhost)
 
     Returns:
-        dict: { face: { "sock": socket, "face": face, "port": port } }
+        dict: { face: { "sock": socket, "face": face, "port": port, "dst_port": dst_port } }
     """
     for interface in interfaces:
         face = interface["face"]
-        port = interface["port"]
+        port = interface["port"] 
+        dst_port = interface["dst_port"] 
 
         sock = create_udp_socket(bind_addr=IP_ADDR, bind_port=port)
 
         INTERFACES[face] = {
             "sock": sock,
             "face": face,
-            "port": port
+            "port": port,
+            "dst_port": dst_port
         }
 
         log("INFO", f"Created socket for {face} on {IP_ADDR}:{port}")
@@ -77,11 +82,11 @@ def create_interface(interfaces):
 
 def send_packet(sock, addr, packet_bytes):
     """Send a packet to a specific address via UDP."""
-    log("DEBUG", f"Sending packet to {addr[0]}:{addr[1]}, Size: {len(packet_bytes)} bytes")
+    # log("DEBUG", f"Sending packet to {addr[0]}:{addr[1]}, Size: {len(packet_bytes)} bytes")
     sock.sendto(packet_bytes, addr)
 
 
-def receive_packet(sock, buffer_size=4096):
+def receive_packet(sock, buffer_size=1024):
     """Receive a packet (blocking)."""
     data, addr = sock.recvfrom(buffer_size)
     return data, addr
@@ -102,7 +107,7 @@ def compute_checksum(data_bytes):
 
 def parse_packet(packet_bytes):
     """Parse and validate a raw packet into structured fields."""
-    # Minimum header = PREAMBLE + IDENTIFIER + LENs + CHECKSUM + POSTAMBLE
+    # Minimum header = PREAMBLE + IDENTIFIER + ADDRESS + LENs + CHECKSUM + POSTAMBLE
     if len(packet_bytes) < 6:
         return None, "Packet too short"
 
@@ -123,21 +128,31 @@ def parse_packet(packet_bytes):
     # Extract identifier
     identifier = struct.unpack(packetStruct.IDENTIFIER_FORMAT, core[0:1])[0]
 
+    # Extract adress
+    address = struct.unpack(packetStruct.ADDRESS_FORMAT, core[1:2])[0]
+    # first 4 bits src, last 4 bits dst
+    src = ((address >> 4) & 0b1111) + 9000
+    dst = (address & 0b1111) + 9000
+
+    if dst not in [INTERFACES[face]["port"] for face in INTERFACES]:  # if dst is 0 or matches this node's port, it's for us
+        log("WARN", f"Packet received for dst port {dst}, which does not match this node's interfaces")
+        return None, "Packet not addressed to this node"
+
     # Decide packet type
     pkt_type = (identifier >> 4) & 0b11  # extract PP bits
     
     if pkt_type == packetStruct.PACKET_TYPE_INTEREST:
-        name_len = struct.unpack(packetStruct.NAME_LENGTH_FORMAT, core[1:2])[0]
-        name = core[2:2+name_len].decode()
-        parsed = {"type": "interest", "name": name, "valid": valid}
+        name_len = struct.unpack(packetStruct.NAME_LENGTH_FORMAT, core[2:3])[0]
+        name = core[3:3+name_len].decode()
+        parsed = {"type": "interest", "name": name, "valid": valid, "src": src, "dst": dst}
         log("SUCCESS", f"Parsed interest packet '{name}'")
         return parsed, None
 
     elif pkt_type == packetStruct.PACKET_TYPE_DATA:
-        name_len = struct.unpack(packetStruct.NAME_LENGTH_FORMAT, core[1:2])[0]
-        data_len = struct.unpack(packetStruct.DATA_LENGTH_FORMAT, core[2:6])[0]
+        name_len = struct.unpack(packetStruct.NAME_LENGTH_FORMAT, core[2:3])[0]
+        data_len = struct.unpack(packetStruct.DATA_LENGTH_FORMAT, core[3:4])[0]
 
-        start_idx = 6
+        start_idx = 4
         name = core[start_idx:start_idx+name_len].decode()
         data_field = core[start_idx+name_len:start_idx+name_len+data_len]
 
@@ -152,6 +167,8 @@ def parse_packet(packet_bytes):
             "type": "data",
             "name": name,
             "data": data_field,
+            "src": src,
+            "dst": dst,
             "frag_num": frag_num,
             "frag_total": frag_total,
             "valid": valid
@@ -173,6 +190,46 @@ def parse_packet(packet_bytes):
 # Metrics Calculation #
 #######################
 
+CSV_FILE = "results.csv"
+
+def append_metrics_to_csv(metrics):
+    file_exists = os.path.isfile(CSV_FILE)
+
+    with open(CSV_FILE, mode="a", newline="") as f:
+        writer = csv.writer(f)
+
+        # write header only once
+        if not file_exists:
+            writer.writerow([
+                "node",
+                "name",
+                "RTT_ms",
+                "interest_receive_time",                
+                "interest_sent_time",
+                "interest_latency",
+                "data_receive_time",
+                "data_sent_time",
+                "data_latency",
+            ])
+
+        writer.writerow([
+            NODE_NAME,
+            metrics["name"],
+            f"{metrics['RTT']:.6f}",
+            f"{metrics['interest_receive_time'] % 1000000}",
+            f"{metrics['interest_sent_time'] % 1000000}",
+            "",
+            f"{metrics['data_receive_time'] % 1000000}",
+            f"{metrics['data_sent_time'] % 1000000}",
+            "",
+        ])
+
+        # reset to 0
+        METRICS["interest_sent_time"] = 0
+        METRICS["interest_receive_time"] = 0
+        METRICS["data_sent_time"] = 0
+        METRICS["data_receive_time"] = 0
+
 # metrics
 METRICS = {
     "interests_sent": 0,
@@ -182,6 +239,8 @@ METRICS = {
     "data_packets_to_receive": 0, # total data packets expected to be received
     "data_packets_to_receive_buffer": {}, # buffer to track received packets for each name
     "data_packets_sent": 0,
+    "data_total_sent": 0,
+    "data_total_received": 0,
 
     "failed_packets": 0,
 
@@ -198,6 +257,11 @@ METRICS = {
     "goodput": 0.0,
     "test_start_time": 0.0,
     "test_end_time": 0.0,
+
+    "interest_sent_time": 0,
+    "interest_receive_time": 0,
+    "data_sent_time": 0,
+    "data_receive_time": 0
 }
 
 def update_metrics(metric_name, value=1):
@@ -216,7 +280,7 @@ def get_metrics():
         update_metrics("data_packets_to_receive", added_to_receive)  # update total expected to receive
 
     if METRICS["data_packets_to_receive"] > 0:
-        METRICS["PDR"] = (METRICS["data_packets_received"] / METRICS["data_packets_to_receive"]) * 100.0
+        METRICS["PDR"] = (METRICS["data_total_received"] / METRICS["interests_sent"]) * 100.0
     return METRICS 
 
 
@@ -226,7 +290,7 @@ def get_metrics():
 ##################
 NODE_NAME = None
 STORAGE_PATH = ""
-INTEREST_LIFETIME = 30  # seconds
+INTEREST_LIFETIME = 360  # seconds
 
 INTERFACES = {}  # port -> face, sock, port 
 
@@ -346,10 +410,13 @@ def lookup_fib(name: str):
     best_match_length = -1
 
     for prefix, entry in FIB.items():
+        if entry["face"] == "face0":
+            interface_to_forward = (entry["face"], entry["port"])
+            
         # Check if name matches this prefix
         if name.startswith(prefix) or prefix == "/":  # "/" matches everything
             prefix_length = len(prefix)
-            
+
             # Only keep entries with longest match
             if prefix_length > best_match_length:
                 best_match_length = prefix_length
@@ -406,28 +473,40 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     # First check Content Store
     cached_data = lookup_content(name)
     if cached_data:
-        from datetime import datetime
         sent_time = datetime.now()
+        METRICS["interest_receive_time"] = sent_time.timestamp() # for easier readability in CSV
         log(
             "DEBUG",
             f"Interest '{name}' received at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+            # f"Interest '{name}' received at {sent_time.timestamp()}, serving from CS"
         )
 
         update_CS_timestamp(name)
         bytes = cached_data["data"]
-        response = build_data_packet(name, bytes)
-
+        
+        response = build_data_packet(name, bytes, packet["src"], packet["dst"])
+        update_metrics("data_total_sent") 
         SEND_QUEUE.put((sock, addr, response))
         log("INFO", f"Served '{name}' from CS to {addr}")
 
 
-        from datetime import datetime
         sent_time = datetime.now()
+        METRICS["data_sent_time"] = sent_time.timestamp()
         log(
             "DEBUG",
-            f"Data '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+            # f"Data '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+            f"Data '{name}' sent at {sent_time.timestamp()} to {addr}"
         )
 
+        append_metrics_to_csv({
+            "name": f"{name}",
+            "RTT": 0,
+            "interest_sent_time": METRICS["interest_sent_time"], # make this float
+            "interest_receive_time": METRICS["interest_receive_time"],
+            "data_sent_time": METRICS["data_sent_time"],
+            "data_receive_time": METRICS["data_receive_time"]
+        })
+        
         update_metrics("data_packets_sent", len(response))
 
         return 
@@ -438,9 +517,9 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
         return
 
     # If this Interest is meant for this node
-    if name.startswith(NODE_NAME):
+    if NODE_NAME and (name == NODE_NAME or name.startswith(NODE_NAME + "/")):
         # /dlsu/goks/detect() -> detect()
-        requested_name = name[len(NODE_NAME)+1:]
+        requested_name = name[len(NODE_NAME)+1:] if name != NODE_NAME else ""
         print(requested_name)
         # in-network function case
         if re.search(r"^[a-zA-Z_]+\(.*\)", requested_name):
@@ -464,7 +543,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
             if cached_data:
                 update_CS_timestamp(base_name)
                 bytes = cached_data["data"]
-                response = build_data_packet(base_name, bytes)
+                response = build_data_packet(name, bytes, packet["src"], packet["dst"])
                 log("INFO", f"Cached content found for base name '{base_name}'")
                 for resp in response:
                     parsed, _ = parse_packet(resp)
@@ -499,12 +578,15 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                 dest_addr = ("127.0.0.1", dest_port)
 
                 # Build Interest packet
-                interest_packet = build_interest_packet(name)
+                interest_packet = build_interest_packet(name, dest_port)
                 log("INFO", f"Forwarding Interest for '{name}' to {forward_face}")
 
                 # store interest to PIT
                 store_interest(name, interface, addr)
                 # log("INFO", f"PIT: {PIT}")
+
+                if METRICS["interest_sent_time"] == 0:
+                    METRICS["interest_sent_time"] = datetime.now().timestamp()
 
                 # send
                 SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [interest_packet]))
@@ -528,7 +610,12 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
 
             log("INFO", f"Forwarding Interest for '{name}' to {forward_face}")
 
-            SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [build_interest_packet(name)]))
+            SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [build_interest_packet(name, dest_port)]))
+
+            if METRICS["interest_sent_time"] == 0:
+                METRICS["interest_sent_time"] = datetime.now().timestamp()
+                log("DEBUG", f"Recorded interest_sent_time at {METRICS['interest_sent_time']} for '{name}'")
+
             store_interest(name, interface, addr)
             update_metrics("interests_sent")
         else:
@@ -588,7 +675,8 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                         log("SUCCESS", f"Buffered fragment {frag_num}/{frag_total} for '{name}'")
 
                     # Forward the fragment
-                    SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
+                    new_packet = modify_packet(raw_packet, face)
+                    SEND_QUEUE.put((sock, PIT_MAPPING[face], [new_packet]))
                     log("INFO", f"Forwarding fragment {frag_num}/{frag_total} for {name} to {PIT_MAPPING[face]}")
                     update_metrics("data_packets_sent")
 
@@ -596,13 +684,15 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
 
                     # Cache if all fragments received
                     if len(FRAG_BUFFER[name]["frags"]) == frag_total:
+                        update_metrics("data_total_sent")
                         reassembled_data = reassemble_fragments(name, frag_total)
                         cleanup_flags["delete_pit"] = True            
                         processed_data = reassembled_data  # Return to be saved once
 
                 # Non-fragmented data
                 else:
-                    SEND_QUEUE.put((sock, PIT_MAPPING[face], [raw_packet]))
+                    new_packet = modify_packet(raw_packet, face)
+                    SEND_QUEUE.put((sock, PIT_MAPPING[face], [new_packet]))
                     log("INFO", f"Forwarding packet for {original_name} to {PIT_MAPPING[face]}")
 
                     cleanup_flags["delete_pit"] = True
@@ -622,6 +712,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             PIT.pop(waiting_for_name)
 
         if cleanup_flags["delete_pit"] and original_name in PIT:
+            update_metrics("data_total_received")
             if original_name in FRAG_BUFFER:
                 # cleanup buffer
                 del FRAG_BUFFER[original_name] 
@@ -649,7 +740,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                 log("INFO", "PIT is now empty.")
                 METRICS["test_end_time"] = time.time()
                 elapsed_time = METRICS["test_end_time"] - METRICS["test_start_time"]
-                log("DEBUG", f"Test completed in {elapsed_time:.2f} seconds.")
+                log("DEBUG", f"Test completed in {time.strftime('%H:%M:%S', time.gmtime(elapsed_time))}")
                 average_throughput = METRICS["total_data_overhead_bytes_received"] / 1024 / elapsed_time if elapsed_time > 0 else 0.0
                 average_goodput = METRICS["total_data_bytes_received"] / 1024 / elapsed_time if elapsed_time > 0 else 0.0
                 METRICS["throughput"] = average_throughput  # in KB/s
@@ -659,14 +750,39 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             #     update_metrics("data_packets_to_receive", METRICS["data_packets_to_receive_buffer"][original_name])
             #     del METRICS["data_packets_to_receive_buffer"][original_name]
 
-            from datetime import datetime
-            sent_time = datetime.now()
+            
+            receive_time = datetime.now()
+            METRICS["data_receive_time"] = receive_time.timestamp()
+
+            append_metrics_to_csv({
+                "name": original_name,
+                "RTT": rtt_ms,
+                "interest_sent_time": METRICS["interest_sent_time"], # make this float
+                "interest_receive_time": METRICS["interest_receive_time"],
+                "data_sent_time": METRICS["data_sent_time"],
+                "data_receive_time": METRICS["data_receive_time"]
+            })
+
             log(
                 "DEBUG",
-                f"Data '{name}' received at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+                f"Data '{name}' received at {receive_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
             )
 
         return cleanup_flags["delete_pit"]
+
+def modify_packet(packet_bytes, face):
+    """Modify the src, destination, checksu, address in the packet bytes."""
+    packet = bytearray(packet_bytes)
+
+    src_port = INTERFACES[face]["port"] - 9000
+    dst_port = INTERFACES[face]["dst_port"] - 9000
+    packet[3] = (src_port << 4) | dst_port # 4 bits src_port, 4 bits dst_port
+    
+    core = packet[2:-3]  
+    new_checksum = compute_checksum(core)
+    packet[-3] = new_checksum
+
+    return bytes(packet)  # Return modified packet bytes
 
 
 def find_pit_entry(name):
@@ -825,17 +941,16 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
     # log("INFO", f"Building final In-Network Function Data packet for '{name}'")
 
     # Send processed results back
-    response = build_data_packet(name, processed_data)
 
     for forward_face in pit_entry["interface"]:
         if forward_face is not None and forward_face in INTERFACES:
             SEND_QUEUE.put((
                 INTERFACES[forward_face]["sock"],
                 PIT_MAPPING.get(forward_face),
-                response
+                build_data_packet(name, processed_data, INTERFACES[forward_face]["dst_port"], INTERFACES[forward_face]["port"])
             ))
     
-    update_metrics("data_packets_sent", len(response))
+    update_metrics("data_packets_sent", len(build_data_packet(name, processed_data)))
     log("INFO", f"Processed In-Network Function '{name}' and sent to {pit_entry['interface']}")
 
     cleanup_flags["delete_pit"] = True
@@ -874,10 +989,13 @@ def apply_function_pipeline(name, data, pit_entry):
 # Packet Builders #
 ###################
 
-def build_interest_packet(name):
+def build_interest_packet(name, dest_port=None):
     name_bytes = name.encode()
     identifier = (packetStruct.PROTOCOL_VERSION << 6) | (packetStruct.PACKET_TYPE_INTEREST << 4)
     header = struct.pack(packetStruct.IDENTIFIER_FORMAT, identifier)
+    src_port = INTERFACES["face0"]["port"] - 9000
+    dst_port = dest_port - 9000 if dest_port is not None else INTERFACES["face0"]["dst_port"]
+    header += struct.pack(packetStruct.ADDRESS_FORMAT, (src_port << 4) | dst_port) # 4 bits src_port, 4 bits dst_port
     header += struct.pack(packetStruct.NAME_LENGTH_FORMAT, len(name_bytes))
     core = header + name_bytes
     checksum = compute_checksum(core).to_bytes(1, 'big')
@@ -886,12 +1004,12 @@ def build_interest_packet(name):
     return packet
 
 
-def build_data_packet(name, data):
+def build_data_packet(name, data, dest_port=None, src_port=None):
     # name_bytes = name.encode()
     data_bytes = data
 
     packets = []
-    fragments = fragment_data(data_bytes)  
+    fragments = fragment_data(data_bytes, max_payload=128-(5+len(name)))  # 5 bytes for header fields, rest for payload
 
     total_frags = len(fragments)
     for idx, frag in enumerate(fragments, start=1):
@@ -904,6 +1022,9 @@ def build_data_packet(name, data):
         identifier = (packetStruct.PROTOCOL_VERSION << 6) | (packetStruct.PACKET_TYPE_DATA << 4)
         header = struct.pack(packetStruct.IDENTIFIER_FORMAT, identifier)
 
+        src_port = INTERFACES["face0"]["port"] - 9000
+        dst_port = dest_port - 9000 if dest_port is not None else INTERFACES["face0"]["dst_port"]
+        header += struct.pack(packetStruct.ADDRESS_FORMAT, (src_port << 4) | dst_port) # 4 bits src_port, 4 bits dst_port
         header += struct.pack(packetStruct.NAME_LENGTH_FORMAT, len(frag_name))
         header += struct.pack(packetStruct.DATA_LENGTH_FORMAT, len(frag))
 
@@ -917,7 +1038,7 @@ def build_data_packet(name, data):
     return packets
 
 
-def fragment_data(data_bytes, max_payload=4000):
+def fragment_data(data_bytes, max_payload=128):
     """
     Splits data into fragments if > max_payload.
     Returns a list of fragments
