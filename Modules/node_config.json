@@ -13,18 +13,6 @@
         },
 
         {
-            "name": "/dlsu/goks/cam",
-            "interfaces": [
-                { "face": "face1", "port": 9042 },
-                { "face": "face0", "port": 9043 }
-            ],
-            "FIB": {
-                "user1": { "face": "face0", "port": 9002 }
-            },
-            "storage": "client_node/storage2/"
-        },
-
-        {
             "name": "user1",
             "interfaces": [
                 { "face": "face0", "port": 9001 },
