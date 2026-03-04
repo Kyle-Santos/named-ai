@@ -7,9 +7,23 @@
                 { "face": "face0", "port": "/dev/tty.usbserial-AI02Z6GB" }
             ],
             "FIB": {
-                "/dlsu/goks/cam": { "face": "face0", "port": "/dev/tty.usbserial-AI02Z6GL" }
+                "user2": { "face": "face0", "port": 9042 }
+            },  
+            "storage": "client_node/storage1/",
+            "max_storage_mb": 50
+        },
+
+        {
+            "name": "user2",
+            "interfaces": [
+                { "face": "face1", "port": 9042 },
+                { "face": "face0", "port": 9043 }
+            ],
+            "FIB": {
+                "user1": { "face": "face0", "port": 9002 }
             },
-            "storage": "client_node/storage/"
+            "storage": "client_node/storage2/",
+            "max_storage_mb": 50
         },
 
         {
@@ -21,7 +35,8 @@
             "FIB": {
                 "/dlsu": { "face": "face0", "port": 9009 }
             },
-            "storage": "client_node/storage/"
+            "storage": "client_node/storage/",
+            "max_storage_mb": 50
         },
 
         {
@@ -33,6 +48,7 @@
                 "/dlsu": { "face": "face0", "port": 9008 }
             },
             "storage": "client_node/storage/",
+            "max_storage_mb": 10,
             "xbee_port": "/dev/tty.usbserial-AB0JV2MF"
         },
 
@@ -51,6 +67,7 @@
                 "user": { "face": "face3", "port": 9015 }
             },  
             "storage": "nfn_nodes/dlsu/",
+            "max_storage_mb": 1,
             "node_functions_mapping": {
                 "/dlsu": ["orchestrate", "recognize"],
                 "/dlsu/goks": ["detect", "resize_facenet", "resize_mfn", "resize_insightface"],
@@ -62,18 +79,19 @@
         {
             "name": "/dlsu/goks",
             "interfaces": [
-                { "face": "face0", "port": 9004, "dst_port": 9000 },
+                { "face": "face0", "port": 9007, "dst_port": 9008 },
                 { "face": "face1", "port": 9005, "dst_port": 9010 },
                 { "face": "face2", "port": 9006, "dst_port": 9013 },
-                { "face": "face3", "port": 9007, "dst_port": 9008 }
+                { "face": "face3", "port": 9004, "dst_port": 9000 }
             ],
             "FIB": {
-                "/dlsu": { "face": "face0", "port": 9000 },
+                "/dlsu": { "face": "face3", "port": 9000 },
                 "/dlsu/andrew": { "face": "face1", "port": 9010 },
                 "/dlsu/velasco": { "face": "face2", "port": 9013 },
-                "/dlsu/goks/cam": { "face": "face3", "port": 9008 }
+                "/dlsu/goks/cam": { "face": "face0", "port": 9008 }
             },
-            "storage": "nfn_nodes/goks/"
+            "storage": "nfn_nodes/goks/",
+            "max_storage_mb": 50
         },
 
         {
@@ -88,7 +106,8 @@
                 "/dlsu/goks": { "face": "face1", "port": 9005 },
                 "/dlsu/velasco": { "face": "face2", "port": 9014 }
             },
-            "storage": "nfn_nodes/andrew/"
+            "storage": "nfn_nodes/andrew/",
+            "max_storage_mb": 50
         },
 
         {
@@ -103,7 +122,8 @@
                 "/dlsu/goks": { "face": "face1", "port": 9006 },
                 "/dlsu/andrew": { "face": "face2", "port": 9011 }
             },
-            "storage": "nfn_nodes/velasco/"
+            "storage": "nfn_nodes/velasco/",
+            "max_storage_mb": 50
         },
 
         {
@@ -115,6 +135,7 @@
                 "/dlsu/goks": { "face": "face0", "port": 9015 }
             },
             "storage": "goks_cam_node/captures/",
+            "max_storage_mb": 500,
             "xbee_port": "/dev/tty.usbserial-AB0JV8XC"
         }
     ]

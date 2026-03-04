@@ -228,6 +228,10 @@ def append_metrics_to_csv(metrics):
                 "data_receive_time",
                 "data_sent_time",
                 "data_latency",
+                "parsing_time",
+                "processing_time",
+                "send_time",
+                "functions"
             ])
 
         writer.writerow([
@@ -240,6 +244,10 @@ def append_metrics_to_csv(metrics):
             f"{metrics['data_receive_time'] % 1000000}",
             f"{metrics['data_sent_time'] % 1000000}",
             "",
+            f"{metrics['parsing_time'] * 1000:.2f}",
+            f"{metrics['processing_time'] * 1000:.2f}",
+            f"{metrics['send_time'] * 1000:.2f}",
+            METRICS["functions"]
         ])
 
         # reset to 0
@@ -247,6 +255,11 @@ def append_metrics_to_csv(metrics):
         METRICS["interest_receive_time"] = 0
         METRICS["data_sent_time"] = 0
         METRICS["data_receive_time"] = 0
+        set_metrics("parsing_time", 0)
+        set_metrics("processing_time", 0)
+        set_metrics("send_time", 0)
+        set_metrics("functions", [])
+
 
 # metrics
 METRICS = {
@@ -279,7 +292,22 @@ METRICS = {
     "interest_sent_time": 0,
     "interest_receive_time": 0,
     "data_sent_time": 0,
-    "data_receive_time": 0
+    "data_receive_time": 0,
+
+    "local_int_rcv_time": 0,
+    "local_int_sent_time": 0,
+    "local_data_rcv_time": 0,
+    "local_data_sent_time": 0,
+    "parsing_time": 0,
+    "processing_time": 0,
+    
+    "func_start_time": 0,
+    "func_end_time": 0,
+
+    "send_time": 0,
+    #"receive_time": 0,
+    "functions":[]
+
 }
 
 def update_metrics(metric_name, value=1):
@@ -288,7 +316,12 @@ def update_metrics(metric_name, value=1):
         log("WARN", f"Unknown metric '{metric_name}'")
         return
     METRICS[metric_name] += value
-
+def set_metrics(metric_name, value =1):
+    """Set a specific metric counter (time)."""
+    if metric_name not in METRICS:
+        log("WARN", f"Unknown metric, '{metric_name}'")
+        return
+    METRICS[metric_name] = value
 def get_metrics():
     """Retrieve current metrics."""
     # Calculate PDR
@@ -317,7 +350,14 @@ PIT_LOCK = threading.Lock()
 PIT_MAPPING = {}  # receiving_face -> addr of sender
 
 CS = {}   # Content Store
-CS_SIZE = 100  # max number of entries in CS
+CS_MAX_BYTES = 10 * 1024 * 1024  # default 10 MB; overridden per node via config
+CS_CURRENT_BYTES = 0   # running total of cached data size in bytes
+
+def set_cs_max_storage(max_mb: float):
+    """Configure the CS size cap (in megabytes) loaded from node_config."""
+    global CS_MAX_BYTES
+    CS_MAX_BYTES = int(max_mb * 1024 * 1024)
+    log("INFO", f"CS max storage set to {max_mb} MB ({CS_MAX_BYTES} bytes)")
 
 FIB = {}   # Forwarding Information Base
 FACES = []  # List of faces
@@ -351,34 +391,127 @@ def store_interest(name, face, addr, funcs=None, waiting_for=None):
             }
             log("SUCCESS", f"Stored Interest '{name}' in PIT")
 
-def store_data(name, data):
-    """Store data in the Content Store (CS)."""
-    if len(CS) >= CS_SIZE:
-        # Evict the oldest entry
-        oldest_name = min(CS.keys(), key=lambda k: CS[k]["timestamp"])
-        CS.pop(oldest_name)
-        log("SUCCESS", f"Evicted '{oldest_name}' to maintain CS capacity")
+def _get_storage_filename(name):
+    """Derive the on-disk filename for a CS entry — mirrors save_data_to_file naming.
+    Strips any existing extension first to avoid double-extensions (e.g. .jpg.jpg)
+    when the CS key itself was loaded from a filename that already had an extension.
+    """
+    if not STORAGE_PATH:
+        return None
+    # Strip leading slash, replace path separators with underscores
+    base = name[1:].replace("/", "_")
+    # Remove any existing file extension so we never produce e.g. .jpg.jpg
+    base = os.path.splitext(base)[0]
+    if "recognize" in name:
+        return os.path.join(STORAGE_PATH, base) + ".txt"
+    elif "embedding" in name:
+        return os.path.join(STORAGE_PATH, base) + ".npy"
+    else:
+        return os.path.join(STORAGE_PATH, base) + ".jpg"
 
-    CS[name] = {"data": data, "timestamp": time.time()}
-    log("SUCCESS", f"Cached '{name}' into CS (size: {len(CS)})")
+
+def _evict_lfu():
+    """
+    Evict one CS entry using LFU policy.
+    Ties in hit_count are broken by least-recently-used (oldest timestamp).
+    Also deletes the corresponding file from disk so storage stays in sync.
+    """
+    global CS_CURRENT_BYTES
+    if not CS:
+        return
+    # Pick the entry with the lowest hit_count; break ties by oldest timestamp
+    victim = min(CS.keys(), key=lambda k: (CS[k]["hit_count"], CS[k]["timestamp"]))
+    freed      = CS[victim]["size"]
+    hit        = CS[victim]["hit_count"]
+    ts         = CS[victim]["timestamp"]
+
+    # Determine if this was a hit_count eviction or a timestamp tiebreak
+    min_hits   = min(CS[k]["hit_count"] for k in CS)
+    tied       = sum(1 for k in CS if CS[k]["hit_count"] == min_hits)
+    if tied > 1:
+        reason = f"hit_count={hit} (timestamp tiebreak — oldest among {tied} tied entries)"
+    else:
+        reason = f"hit_count={hit} (least frequently used)"
+
+    CS.pop(victim)
+    CS_CURRENT_BYTES -= freed
+
+    # Delete from disk — keep storage directory in sync with CS
+    filepath = _get_storage_filename(victim)
+    if filepath and os.path.isfile(filepath):
+        try:
+            os.remove(filepath)
+            log("SUCCESS",
+                f"[LFU] Evicted '{victim}' from CS and disk — {reason} "
+                f"(freed {freed} bytes, CS now {CS_CURRENT_BYTES} bytes)")
+        except OSError as e:
+            log("WARN",
+                f"[LFU] Evicted '{victim}' from CS but failed to delete file: {e}")
+    else:
+        log("SUCCESS",
+            f"[LFU] Evicted '{victim}' from CS (no disk file) — {reason} "
+            f"(freed {freed} bytes, CS now {CS_CURRENT_BYTES} bytes)")
+
+
+def store_data(name, data):
+    """Store data in the Content Store (CS) with LFU eviction when over capacity."""
+    global CS_CURRENT_BYTES
+    entry_size = len(data)
+
+    # Reject immediately if the entry alone exceeds the entire CS capacity
+    if entry_size > CS_MAX_BYTES:
+        log("WARN",
+            f"Image over size: '{name}' ({entry_size} B) exceeds CS capacity "
+            f"({CS_MAX_BYTES} B) — not cached")
+        return
+
+    # If already cached, update data/size/timestamp but preserve hit_count
+    if name in CS:
+        old_size = CS[name]["size"]
+        CS[name]["data"] = data
+        CS[name]["size"] = entry_size
+        CS[name]["timestamp"] = time.time()
+        # hit_count intentionally preserved
+        CS_CURRENT_BYTES += entry_size - old_size
+        log("SUCCESS", f"Updated '{name}' in CS (size: {entry_size} bytes, hit_count preserved={CS[name]['hit_count']})")
+        return
+
+    # Evict until there is room for the new entry (LFU, tie-break by LRU)
+    while CS_CURRENT_BYTES + entry_size > CS_MAX_BYTES and CS:
+        _evict_lfu()
+
+    CS[name] = {
+        "data": data,
+        "timestamp": time.time(),
+        "hit_count": 0,    # cache-hit tally (incremented on each lookup_content hit)
+        "size": entry_size,
+    }
+    CS_CURRENT_BYTES += entry_size
+    log("SUCCESS",
+        f"Cached '{name}' into CS (entry_size={entry_size} B, "
+        f"CS total={CS_CURRENT_BYTES} B / {CS_MAX_BYTES} B, entries={len(CS)})")
 
 def lookup_content(name):
-    """Look up content in the Content Store (CS)."""
+    """Look up content in the Content Store (CS). Increments hit_count on a cache hit."""
     entry = CS.get(name, None)
     if entry is not None:
-        log("SUCCESS", f"CS hit for '{name}'")
+        entry["hit_count"] += 1
+        log("SUCCESS",
+            f"CS hit for '{name}' (hit_count={entry['hit_count']})")
     return entry
 
 def update_CS_timestamp(name):
-    """Update the timestamp of a CS entry to mark it as recently used."""
+    """Update the timestamp of a CS entry to mark it as recently used (LRU touch)."""
     if name in CS:
         CS[name]["timestamp"] = time.time()
-        log("SUCCESS", f"Updated CS entry for '{name}'")
+        log("SUCCESS",
+            f"Refreshed CS timestamp for '{name}' (hit_count={CS[name]['hit_count']})")
 
 def initialize_content_store(storage_path):
     """Load existing content from storage into the Content Store (CS)."""
-    global STORAGE_PATH
+    global STORAGE_PATH, CS_CURRENT_BYTES
     STORAGE_PATH = storage_path
+    CS_CURRENT_BYTES = 0  # reset on (re)init
 
     if STORAGE_PATH != "" and not os.path.exists(STORAGE_PATH):
         os.makedirs(STORAGE_PATH)
@@ -486,7 +619,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     """Process Interest: check CS or forward."""
     name = packet["name"]
     update_metrics("interests_received")
-
+    # set_metrics("local_int_rcv_time", time.time())
     if METRICS["test_start_time"] == 0.0:
         METRICS["test_start_time"] = time.time()
 
@@ -526,14 +659,14 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
             f"Data '{name}' sent at {sent_time.timestamp()} to {addr}"
         )
 
-        append_metrics_to_csv({
-            "name": f"{name}",
-            "RTT": 0,
-            "interest_sent_time": METRICS["interest_sent_time"], # make this float
-            "interest_receive_time": METRICS["interest_receive_time"],
-            "data_sent_time": METRICS["data_sent_time"],
-            "data_receive_time": METRICS["data_receive_time"]
-        })
+        # append_metrics_to_csv({
+        #     "name": f"{name}",
+        #     "RTT": 0,
+        #     "interest_sent_time": METRICS["interest_sent_time"], # make this float
+        #     "interest_receive_time": METRICS["interest_receive_time"],
+        #     "data_sent_time": METRICS["data_sent_time"],
+        #     "data_receive_time": METRICS["data_receive_time"]
+        # })
         
         update_metrics("data_packets_sent", len(response))
 
@@ -585,6 +718,12 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                 forward_face, dest_port = route
                 source_port = INTERFACES[forward_face]["port"]
                 source_addr = ("127.0.0.1", source_port)
+                # set_metrics("local_int_sent_time", time.time())
+                # interest_delay = (
+                #     METRICS["local_int_sent_time"] - METRICS["local_int_rcv_time"]
+                # )
+                # log("DEBUG",
+                #     f"Interest '{name}' processing delay: {interest_delay * 1000:.4f} ms")
                 process_interest({ "name" : base_name }, source_addr, INTERFACES[forward_face]["sock"], SEND_QUEUE, None)
                 update_metrics("interests_sent")
             else:
@@ -606,7 +745,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                 dest_addr = ("127.0.0.1", dest_port)
 
                 # Build Interest packet
-                interest_packet = build_interest_packet(name, dest_port)
+                interest_packet = build_interest_packet(name, dest_port, INTERFACES[forward_face]["port"])
                 log("INFO", f"Forwarding Interest for '{name}' to {forward_face}")
 
                 # store interest to PIT
@@ -617,6 +756,12 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
                     METRICS["interest_sent_time"] = datetime.now().timestamp()
 
                 # send
+                set_metrics("local_int_sent_time", time.time())
+                interest_delay = (
+                    METRICS["local_int_sent_time"] - METRICS["local_int_rcv_time"]
+                )
+                # log("DEBUG",
+                #     f"Interest '{name}' processing delay: {interest_delay * 1000:.4f} ms")
                 SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [interest_packet]))
                 update_metrics("interests_sent")
                 return
@@ -637,8 +782,13 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
             dest_addr = ("127.0.0.1", dest_port)
 
             log("INFO", f"Forwarding Interest for '{name}' to {forward_face}")
-
-            SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [build_interest_packet(name, dest_port)]))
+            set_metrics("local_int_sent_time", time.time())
+            interest_delay = (
+                METRICS["local_int_sent_time"] - METRICS["local_int_rcv_time"]
+            )
+            # log("DEBUG",
+            #     f"Interest '{name}' processing delay: {interest_delay * 1000:.4f} ms")
+            SEND_QUEUE.put((INTERFACES[forward_face]["sock"], dest_addr, [build_interest_packet(name, dest_port, INTERFACES[forward_face]["port"])]))
 
             if METRICS["interest_sent_time"] == 0:
                 METRICS["interest_sent_time"] = datetime.now().timestamp()
@@ -659,6 +809,8 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
     data = packet["data"]
     frag_num = packet.get("frag_num")
     frag_total = packet.get("frag_total")
+    # if METRICS["local_data_rcv_time"] == 0:
+    #     METRICS["local_data_rcv_time"] = time.time()
     with PIT_LOCK:
         if name not in METRICS["data_packets_to_receive_buffer"]:
             METRICS["data_packets_to_receive_buffer"][name] = frag_total if frag_total else 1
@@ -718,6 +870,12 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
 
                 # Non-fragmented data
                 else:
+                    # set_metrics("local_data_sent_time", time.time())
+                    # data_delay = (
+                    #     METRICS["local_data_sent_time"] - METRICS["local_data_rcv_time"]
+                    #     )
+                    # log("DEBUG",
+                    #     f"Data '{name}' processing delay: {data_delay * 1000:.4f} ms")
                     new_packet = modify_packet(raw_packet, face)
                     SEND_QUEUE.put((sock, PIT_MAPPING[face], [new_packet]))
                     log("INFO", f"Forwarding packet for {original_name} to {PIT_MAPPING[face]}")
@@ -745,11 +903,20 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                 del FRAG_BUFFER[original_name] 
 
             # RTT
+            # set_metrics("local_data_sent_time", time.time())
+
+            # data_delay = (
+            #     METRICS["local_data_sent_time"] - METRICS["local_data_rcv_time"]
+            #     )
+            # log("DEBUG",
+            #     f"Data '{name}' processing delay: {data_delay * 1000:.4f} ms")
             pit_entry = PIT[original_name]
             rtt = time.time() - pit_entry["time"]
+            METRICS["ave_RTT"] = 0.0
             if METRICS["ave_RTT"] == 0.0:
                 METRICS["ave_RTT"] = rtt * 1000  # in ms
             METRICS["ave_RTT"] = (METRICS["ave_RTT"] + rtt * 1000) / 2
+
             rtt_ms = rtt * 1000
             log("DEBUG", f"RTT for '{original_name}': {rtt_ms:.4f}ms, Average RTT: {METRICS['ave_RTT']:.4f}ms")
 
@@ -767,7 +934,7 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                 log("INFO", "PIT is now empty.")
                 METRICS["test_end_time"] = time.time()
                 elapsed_time = METRICS["test_end_time"] - METRICS["test_start_time"]
-                log("DEBUG", f"Test completed in {time.strftime('%H:%M:%S', time.gmtime(elapsed_time))}")
+                # log("DEBUG", f"Test completed in {time.strftime('%H:%M:%S', time.gmtime(elapsed_time))}")
                 average_throughput = METRICS["total_data_overhead_bytes_received"] / 1024 / elapsed_time if elapsed_time > 0 else 0.0
                 average_goodput = METRICS["total_data_bytes_received"] / 1024 / elapsed_time if elapsed_time > 0 else 0.0
                 METRICS["throughput"] = average_throughput  # in KB/s
@@ -777,23 +944,29 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             #     update_metrics("data_packets_to_receive", METRICS["data_packets_to_receive_buffer"][original_name])
             #     del METRICS["data_packets_to_receive_buffer"][original_name]
 
+            # log("DEBUG", f"Parsing time for '{original_name}': {METRICS['parsing_time'] * 1000:.4f} milliseconds")
+            # log("DEBUG", f"Processing time for '{original_name}': {METRICS['processing_time'] * 1000:.4f} milliseconds")
+            # set_metrics("parsing_time", 0)
+            # set_metrics("processing_time", 0)
             
             receive_time = datetime.now()
             METRICS["data_receive_time"] = receive_time.timestamp()
+            
+            """log("DEBUG",
+                f"sending_time for '{original_name}': {METRICS['send_time'] * 1000:.4f} milliseconds")
+            set_metrics("send_time", 0) """
+            # send interest /dlsu/goks/cam/capture8.jpg
+            
+            # append_metrics_to_csv({
+            #     "name": original_name,
+            #     "RTT": rtt_ms,
+            #     "interest_sent_time": METRICS["interest_sent_time"], # make this float
+            #     "interest_receive_time": METRICS["interest_receive_time"],
+            #     "data_sent_time": METRICS["data_sent_time"],
+            #     "data_receive_time": METRICS["data_receive_time"]
+            # })
 
-            append_metrics_to_csv({
-                "name": original_name,
-                "RTT": rtt_ms,
-                "interest_sent_time": METRICS["interest_sent_time"], # make this float
-                "interest_receive_time": METRICS["interest_receive_time"],
-                "data_sent_time": METRICS["data_sent_time"],
-                "data_receive_time": METRICS["data_receive_time"]
-            })
-
-            log(
-                "DEBUG",
-                f"Data '{name}' received at {receive_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
-            )
+            # log( "DEBUG", f"Data '{name}' received at {receive_time.strftime('%H:%M:%S.%f')}")  # HH:MM:SS.mmm
 
         return cleanup_flags["delete_pit"]
 
@@ -920,10 +1093,9 @@ def save_data_to_file(name, data_bytes):
     else:
         filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_'))
 
-    if name not in CS:
-        store_data(name, data_bytes)
-    else:
-        update_CS_timestamp(name)
+    # Always go through store_data — it handles both new entries and updates,
+    # and keeps CS_CURRENT_BYTES accurate. hit_count is preserved for existing entries.
+    store_data(name, data_bytes)
 
     with open(filename, "wb") as f:
         f.write(data_bytes)
@@ -959,8 +1131,8 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
     """Process Named Function Networking request"""
     log("INFO", f"Starting In-Network Function processing for '{name}', waiting_for = '{waiting_for_name}'")
     log("INFO", f"Assembling workflow: funcs={pit_entry.get('funcs', [])}")
-    # Save the original data
-    if lookup_content(waiting_for_name) is None and waiting_for_name not in CS:
+    # Save the original data (use direct CS check — lookup_content would falsely increment hit_count)
+    if waiting_for_name not in CS:
         save_data_to_file(waiting_for_name, full_data)
     cleanup_flags["delete_waiting_for"] = True
 
@@ -1025,7 +1197,7 @@ def apply_function_pipeline(name, data, pit_entry):
     log("INFO", f"Initial payload size: {len(data)} bytes")
     for func_name in pit_entry.get("funcs", []):
         log("INFO", f"Applying function: {func_name}")
-
+        set_metrics("func_start_time", time.time())
         if func_name not in FUNCTIONS_TABLE:
             log("ERROR", f"Function '{func_name}' not found in FUNCTIONS_TABLE")
             continue
@@ -1036,12 +1208,18 @@ def apply_function_pipeline(name, data, pit_entry):
             f"input={len(processed_data)} bytes")
             processed_data = func(processed_data)
             log("INFO", f"Function '{func_name}' completed successfully")
+            set_metrics("func_end_time", time.time())
+            process_delay = (
+                METRICS["func_end_time"] - METRICS["func_start_time"]
+            )
+            METRICS["functions"].append((func_name, round((METRICS['func_end_time'] - METRICS['func_start_time']) * 1000, 2)))
+            log("DEBUG",
+            f"Processing delay for  '{func_name}': '{process_delay*1000:.4f}' ms")
         except Exception as e:
             log("ERROR", f"Function '{func_name}' failed: {e}")
             import traceback
             traceback.print_exc()
             # Continue with unprocessed data
-
     return processed_data
 
 
@@ -1050,12 +1228,12 @@ def apply_function_pipeline(name, data, pit_entry):
 # Packet Builders #
 ###################
 
-def build_interest_packet(name, dest_port=None):
+def build_interest_packet(name, dest_port=None, src_port=None):
     name_bytes = name.encode()
     identifier = (packetStruct.PROTOCOL_VERSION << 6) | (packetStruct.PACKET_TYPE_INTEREST << 4)
     header = struct.pack(packetStruct.IDENTIFIER_FORMAT, identifier)
-    src_port = INTERFACES["face0"]["port"] - 9000
-    dst_port = dest_port - 9000 if dest_port is not None else INTERFACES["face0"]["dst_port"]
+    src_port = src_port - 9000 if src_port is not None else INTERFACES["face0"]["port"] - 9000
+    dst_port = dest_port - 9000 if dest_port is not None else INTERFACES["face0"]["dst_port"] - 9000
     header += struct.pack(packetStruct.ADDRESS_FORMAT, (src_port << 4) | dst_port) # 4 bits src_port, 4 bits dst_port
     header += struct.pack(packetStruct.NAME_LENGTH_FORMAT, len(name_bytes))
     core = header + name_bytes
@@ -1071,10 +1249,11 @@ def build_data_packet(name, data, dest_port=None, src_port=None):
     data_bytes = data
 
     packets = []
-    fragments = fragment_data(data_bytes, max_payload=256-(12+len(name)))  # 5 bytes for header fields, rest for payload
+    fragments = fragment_data(data_bytes, max_payload=255-(12+len(name)))  # 5 bytes for header fields, rest for payload
 
     src_port = src_port - 9000 if src_port is not None else INTERFACES["face0"]["port"] - 9000
-    dst_port = dest_port - 9000 if dest_port is not None else INTERFACES["face0"]["dst_port"]
+    dst_port = dest_port - 9000 if dest_port is not None else INTERFACES["face0"]["dst_port"] - 9000
+    # log("DEBUG", f"Building data packet with src_port={src_port}, dest_port={dst_port}")
     
     total_frags = len(fragments)
     for idx, frag in enumerate(fragments, start=1):
@@ -1095,7 +1274,7 @@ def build_data_packet(name, data, dest_port=None, src_port=None):
 
         packet = packetStruct.PREAMBLE + core + checksum + packetStruct.POSTAMBLE
         packets.append(packet)
-        log("SUCCESS", f"Built data packet for '{name}' fragment {idx}/{total_frags}")
+        log("SUCCESS", f"Built data packet for '{name}' fragment {idx}/{total_frags} (size={len(packet)} bytes) (namesize={len(frag_name)} bytes, payload={len(frag)} bytes)")
 
     return packets
 
@@ -1105,6 +1284,6 @@ def fragment_data(data_bytes, max_payload=128):
     Splits data into fragments if > max_payload.
     Returns a list of fragments
     """
-    num_frags = str(len(data_bytes) // max_payload)  if len(data_bytes) > max_payload else ""
-    max_payload = max_payload - (2 * len(num_frags)) 
+    num_frags = str(len(data_bytes) // max_payload) if len(data_bytes) > max_payload else ""
+    max_payload = max_payload - (2 * len(num_frags))
     return [data_bytes[i:i+max_payload] for i in range(0, len(data_bytes), max_payload)]

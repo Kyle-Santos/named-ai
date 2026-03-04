@@ -42,6 +42,10 @@ def load_node_config(config_path: str, node_name: str):
     NN.NODE_NAME = node_config["name"]
     NN.FIB = node_config.get("FIB", {})
     NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
+
+    # Apply per-node CS storage cap (MB) before initializing content store
+    max_storage_mb = node_config.get("max_storage_mb", 10)
+    NN.set_cs_max_storage(max_storage_mb)
     NN.XBEE_PORT = node_config.get("xbee_port", None)
 
     # Initialize content store
@@ -112,8 +116,12 @@ def processor_thread():
             
             print(packet)
 
+            start_time = time.time()
             # Parse the packet
             parsed, err = NN.parse_packet(packet)
+            end_time = time.time()
+            NN.update_metrics("parsing_time", end_time - start_time)
+            
             if err:
                 msg = f"Parse error: {err}"
                 print(msg)
@@ -130,11 +138,37 @@ def processor_thread():
             try:
                 # Process based on packet type
                 if parsed["type"] == "interest":
+                    start_time = time.time()
                     NN.process_interest(parsed, addr=None, sock=sock, 
                                       SEND_QUEUE=SEND_QUEUE, interface=None)
+                    end_time = time.time()
+                    NN.update_metrics("processing_time", end_time - start_time)
+                    if NN.NODE_NAME.startswith("/dlsu/goks/cam"):
+                        log("DEBUG", f"FINAL Parsing Time: {NN.METRICS['parsing_time'] * 1000:.4f} ms")
+                        log("DEBUG", f"Finished processing Interest '{parsed['name']}' in {NN.METRICS['processing_time'] * 1000:.4f} ms")
+
                 elif parsed["type"] == "data":
+                    start_time = time.time()
                     NN.process_data(parsed, packet, sock=sock, 
                                   SEND_QUEUE=SEND_QUEUE)
+                    end_time = time.time()
+                    NN.update_metrics("processing_time", end_time - start_time)
+                    if parsed["frag_num"] == parsed["frag_total"] or parsed["frag_num"] is None:
+                        log("DEBUG", f"FINAL Parsing Time: {NN.METRICS['parsing_time'] * 1000:.4f} ms")
+                        log("DEBUG", f"Finished processing Data '{parsed['name']}' in {NN.METRICS['processing_time'] * 1000:.4f} ms")
+
+                        NN.append_metrics_to_csv({
+                            "name": parsed["name"],
+                            "RTT": NN.METRICS["ave_RTT"],  # in ms
+                            "interest_sent_time": NN.METRICS["interest_sent_time"], # make this float
+                            "interest_receive_time": NN.METRICS["interest_receive_time"],
+                            "data_sent_time": NN.METRICS["data_sent_time"],
+                            "data_receive_time": NN.METRICS["data_receive_time"],
+                            "parsing_time": NN.METRICS["parsing_time"],
+                            "processing_time": NN.METRICS["processing_time"],
+                            "send_time": NN.METRICS["send_time"]
+                        })
+
             except Exception as e:
                 msg = f"[Processor] Error processing packet: {e}"
                 print(msg)
@@ -170,9 +204,26 @@ def sender():
 
         try:
             sock, addr, response = task
+            start_time = time.time()
             for resp in response:
                 NN.send_packet(sock, addr, resp)
                 time.sleep(0.001)  # slight delay to avoid UDP packet loss
+            end_time = time.time()
+            NN.update_metrics("send_time", end_time - start_time)
+            log("DEBUG", f"Sent response to {addr} in {NN.METRICS['send_time'] * 1000:.4f} ms")
+
+            if NN.NODE_NAME.startswith("/dlsu/goks/cam"):
+                NN.append_metrics_to_csv({
+                    "name": NN.NODE_NAME,  # or use a specific name if available
+                    "RTT": NN.METRICS["ave_RTT"],  # in ms
+                    "interest_sent_time": NN.METRICS["interest_sent_time"], # make this float
+                    "interest_receive_time": NN.METRICS["interest_receive_time"],
+                    "data_sent_time": NN.METRICS["data_sent_time"],
+                    "data_receive_time": NN.METRICS["data_receive_time"],
+                    "parsing_time": NN.METRICS["parsing_time"],
+                    "processing_time": NN.METRICS["processing_time"],
+                    "send_time": NN.METRICS["send_time"]
+                })
         except Exception as e:
             msg = f"[Sender] Error: {e}"
             print(msg)
@@ -584,8 +635,8 @@ if GUI_AVAILABLE:
                 self.table.setColumnCount(3)
                 headers = ["NAME", "FACE", "TIME"]
             elif mode == "cs":
-                self.table.setColumnCount(2)
-                headers = ["NAME", "ACCESS TIME"]
+                self.table.setColumnCount(3)
+                headers = ["NAME", "HIT COUNT", "ACCESS TIME"]
             elif mode == "fib":
                 self.table.setColumnCount(3)
                 headers = ["PREFIX", "FACE", "PORT"]
@@ -855,15 +906,15 @@ if GUI_AVAILABLE:
                 if self.current_table == "cs":
                     if isinstance(cs, dict):
                         for name, meta in cs.items():
-                            # size = meta.get("size", "")
+                            hit_count = meta.get("hit_count", 0)
                             ctime = meta.get("timestamp", "")
-                            entries.append((name, time.strftime('%H:%M:%S', time.localtime(ctime))))
+                            entries.append((name, hit_count, time.strftime('%H:%M:%S', time.localtime(ctime))))
                     elif isinstance(cs, list):
                         for item in cs:
                             name = item.get("name", "")
-                            # size = item.get("size", "")
+                            hit_count = item.get("hit_count", 0)
                             ctime = item.get("timestamp", "")
-                            entries.append((name, time.strftime('%H:%M:%S', time.localtime(ctime))))
+                            entries.append((name, hit_count, time.strftime('%H:%M:%S', time.localtime(ctime))))
                 elif self.current_table == "pit":
                     if isinstance(pit, dict):
                         for name, entry in pit.items():
@@ -888,7 +939,7 @@ if GUI_AVAILABLE:
 
                 self.table.setRowCount(len(entries))
 
-                if self.current_table in ("cs", "metrics"):
+                if self.current_table in ("metrics",):
                     for r, (col1, col2) in enumerate(entries):
                         self.table.setItem(r, 0, QTableWidgetItem(str(col1)))
                         self.table.setItem(r, 1, QTableWidgetItem(str(col2)))
@@ -998,8 +1049,6 @@ def main():
 
         win.show()
         sys.exit(app.exec_())
-
-
 
 if __name__ == "__main__":
     main()
