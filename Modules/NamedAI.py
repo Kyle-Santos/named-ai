@@ -270,6 +270,9 @@ METRICS = {
 
     "parsing_time": 0,
     "processing_time": 0,
+    
+    "func_start_time": 0,
+    "func_end_time": 0,
 }
 
 def update_metrics(metric_name, value=1):
@@ -1087,6 +1090,7 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
 
 def apply_function_pipeline(name, data, pit_entry):
     """Apply all functions in the NFN pipeline"""
+    set_metrics("func_start_time", time.time())
     processed_data = data
     log("INFO", f"Initializing ML pipeline for '{name}', stages={pit_entry.get('funcs', [])}")
     log("INFO", f"Initial payload size: {len(data)} bytes")
@@ -1103,12 +1107,17 @@ def apply_function_pipeline(name, data, pit_entry):
             f"input={len(processed_data)} bytes")
             processed_data = func(processed_data)
             log("INFO", f"Function '{func_name}' completed successfully")
+            set_metrics("func_end_time", time.time())
+            process_delay = (
+                METRICS["func_end_time"] - METRICS["func_start_time"]
+            )
+            log("DEBUG",
+            f"Processing delay for  '{func_name}': '{process_delay*1000:.4f}' ms")
         except Exception as e:
             log("ERROR", f"Function '{func_name}' failed: {e}")
             import traceback
             traceback.print_exc()
             # Continue with unprocessed data
-
     return processed_data
 
 
