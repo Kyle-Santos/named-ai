@@ -4,16 +4,16 @@
         {
             "name": "user3",
             "interfaces": [
-                { "face": "face0", "port": 9041 }
+                { "face": "face0", "port": "/dev/tty.usbserial-AI02Z6GB" }
             ],
             "FIB": {
-                "user2": { "face": "face0", "port": 9042 }
-            },  
-            "storage": "client_node/storage1/"
+                "/dlsu/goks/cam": { "face": "face0", "port": "/dev/tty.usbserial-AI02Z6GL" }
+            },
+            "storage": "client_node/storage/"
         },
 
         {
-            "name": "user2",
+            "name": "/dlsu/goks/cam",
             "interfaces": [
                 { "face": "face1", "port": 9042 },
                 { "face": "face0", "port": 9043 }

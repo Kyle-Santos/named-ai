@@ -1,4 +1,3 @@
-import socket
 import struct
 import Packet_Structure as packetStruct
 import random
@@ -6,9 +5,9 @@ import re
 import os
 import time
 import threading
+import serial
 import csv
 from datetime import datetime
-import struct
 
 LOGS = []
 GUI_CALLBACK = None
@@ -33,19 +32,13 @@ def log(level, message, path=""):
 #########################
 # Communication Module  #
 #########################
-IP_ADDR = "127.0.0.1"
+# IP_ADDR = "127.0.0.1"
+BAUD_RATE = 57600
 
-def set_ip_addr(ip_addr):
-    """Set the IP address for all interfaces (if needed)."""
-    global IP_ADDR
-    IP_ADDR = ip_addr
-
-def create_udp_socket(bind_addr=IP_ADDR, bind_port=9000):
-    """Create and bind a UDP socket for communication."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind((bind_addr, bind_port))
-    return sock
-
+def create_serial_connection(port):
+    ser = serial.Serial(port, BAUD_RATE, timeout=0, rtscts=True)
+    time.sleep(1)  # XBee warmup
+    return ser
 
 def create_interface(interfaces):
     """
@@ -67,34 +60,56 @@ def create_interface(interfaces):
         port = interface["port"] 
         dst_port = interface["dst_port"] 
 
-        sock = create_udp_socket(bind_addr=IP_ADDR, bind_port=port)
+        ser = create_serial_connection(port)
 
         INTERFACES[face] = {
-            "sock": sock,
+            "sock": ser,          # keep key name 'sock' so rest of code works
             "face": face,
             "port": port,
             "dst_port": dst_port
         }
 
-        log("INFO", f"Created socket for {face} on {IP_ADDR}:{port}")
+        log("INFO", f"Opened XBee interface {face} on {port}")
+
     return INTERFACES
 
 
 def send_packet(sock, addr, packet_bytes):
-    """Send a packet to a specific address via UDP."""
-    # log("DEBUG", f"Sending packet to {addr[0]}:{addr[1]}, Size: {len(packet_bytes)} bytes")
-    sock.sendto(packet_bytes, addr)
+    """Send packet via XBee serial (addr unused but kept for compatibility)."""
+    try:
+        sock.write(packet_bytes)  
+        sock.flush()
+        log("DEBUG", f"Sent {len(packet_bytes)} bytes over XBee")
+    except Exception as e:
+        log("ERROR", f"XBee send failed: {e}")
 
+def receive_packet(sock, buf: list):
+    """
+    Receive raw bytes, buffer them, and return the next complete packet or None.
+    buf is a single-element list [b""] used as a mutable reference.
+    """
+    try:
+        buf[0] += sock.read(256)
 
-def receive_packet(sock, buffer_size=1024):
-    """Receive a packet (blocking)."""
-    data, addr = sock.recvfrom(buffer_size)
-    return data, addr
+        # Discard anything before the first preamble
+        start = buf[0].find(packetStruct.PREAMBLE)
+        if start == -1:
+            buf[0] = b""
+            return None
+        if start > 0:
+            print(buf[0])
+            buf[0] = buf[0][start:]
 
+        # Return the first complete packet if one exists
+        end = buf[0].find(packetStruct.POSTAMBLE, len(packetStruct.PREAMBLE))
+        if end == -1:
+            return None
+        end += len(packetStruct.POSTAMBLE)
+        packet, buf[0] = buf[0][:end], buf[0][end:]
+        return packet
 
-
-
-
+    except TimeoutError:
+        return None
 
 ##################
 # Parsing Module #
@@ -122,6 +137,8 @@ def parse_packet(packet_bytes):
     # Check packet integrity through checksum
     checksum = core[-1]
     valid = compute_checksum(core[:-1]) == checksum
+    # print(core)
+    print("checksum:", compute_checksum(core[:-1]), "==", checksum)
     if not valid:
         return None, "Checksum mismatch"
     
@@ -449,6 +466,8 @@ def cleanup_expired_pit_entries():
 
         for name in expired_names:
             PIT.pop(name)
+            if name in FRAG_BUFFER:
+                del FRAG_BUFFER[name] 
         
     return len(expired_names)
 
@@ -470,6 +489,14 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     if METRICS["test_start_time"] == 0.0:
         METRICS["test_start_time"] = time.time()
 
+    sent_time = datetime.now()
+    METRICS["interest_receive_time"] = sent_time.timestamp() # for easier readability in CSV
+    log(
+        "DEBUG",
+        f"Interest '{name}' received at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+        # f"Interest '{name}' received at {sent_time.timestamp()}, serving from CS"
+    )
+    
     # First check Content Store
     cached_data = lookup_content(name)
     if cached_data:
@@ -487,7 +514,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
         response = build_data_packet(name, bytes, packet["src"], packet["dst"])
         update_metrics("data_total_sent") 
         SEND_QUEUE.put((sock, addr, response))
-        log("INFO", f"Served '{name}' from CS to {addr}")
+        log("INFO", f"Served '{name}' from CS to {sock}")
 
 
         sent_time = datetime.now()
@@ -525,14 +552,14 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
         if re.search(r"^[a-zA-Z_]+\(.*\)", requested_name):
             # the NFN is for this node
             base_name, funcs = parse_nfn_expression(requested_name)
-            log("INFO", f"Parsed In-Network Function Interest: base_name='{base_name}', funcs={funcs}")
+            log("DEBUG", f"Parsed In-Network Function Interest: base_name='{base_name}', funcs={funcs}")
 
             if "recognize" in funcs:
                 model, recognize = funcs # ['openface', 'recognize']
                 log("INFO", f"Received In-Network Function Interest for recognition pipeline: '{name}'")
                 func = FUNCTIONS_TABLE["orchestrate"]
                 interest_expr = func(base_name, model, PIT, NODE_FUNCTIONS_MAPPING)
-                log("INFO", f"Orchestrated Interest Expression: '{interest_expr}'")
+                log("DEBUG", f"Orchestrated Interest Expression: '{interest_expr}'")
                 store_interest(name, interface, addr, [recognize], interest_expr)
                 base_name = interest_expr
             else:
@@ -640,7 +667,6 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
         update_metrics("total_data_overhead_bytes_received", len(raw_packet))
         update_metrics("data_overhead_bytes_received_per_name", len(raw_packet))
         update_metrics("data_bytes_received_per_name", len(data))
-
 
         # Find the relevant PIT entry
         pit_entry, original_name, waiting_for_name = find_pit_entry(name)
@@ -886,6 +912,8 @@ def save_data_to_file(name, data_bytes):
     log("INFO", f"Saving processed output for '{name}' to CS")
     if "recognize" in name:
         filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_')) + ".txt"
+    elif name.endswith(".txt"):
+        filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_'))
     elif "embedding" in name:
         filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_')) + ".npy"
     else:
@@ -940,6 +968,38 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
     log("INFO", f"In-Network Function pipeline complete for '{name}', size={len(processed_data)} bytes")
     # log("INFO", f"Building final In-Network Function Data packet for '{name}'")
 
+    pit_entry, original_name, waiting_for_name = find_pit_entry(name)  # refresh PIT entry in case it was modified during processing 
+    log("DEBUG", f"Current PIT entry: {pit_entry}")
+    if waiting_for_name == name and len(pit_entry.get("funcs", [])) == 1 and pit_entry["funcs"][0] == "recognize":
+        processed_data = apply_function_pipeline(original_name, processed_data, pit_entry)
+        log("DEBUG", f"Applied final recognition function for '{processed_data}'")
+        response = build_data_packet(original_name, processed_data)
+        
+        forward_face = pit_entry["interface"].copy().pop()  # get the single face to forward to
+        SEND_QUEUE.put((INTERFACES["face0"]["sock"],"",response))
+
+        PIT.pop(waiting_for_name)
+        cleanup_flags["delete_pit"] = True
+
+        sent_time = datetime.now()
+        METRICS["data_sent_time"] = sent_time.timestamp()
+        log(
+            "DEBUG",
+            # f"Data '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+            f"Data '{original_name}' sent at {sent_time.timestamp()}"
+        )
+
+        append_metrics_to_csv({
+            "name": f"{original_name}",
+            "RTT": 0,
+            "interest_sent_time": METRICS["interest_sent_time"], # make this float
+            "interest_receive_time": METRICS["interest_receive_time"],
+            "data_sent_time": METRICS["data_sent_time"],
+            "data_receive_time": METRICS["data_receive_time"]
+        })
+        
+        return processed_data
+        
     # Send processed results back
 
     for forward_face in pit_entry["interface"]:
@@ -951,7 +1011,7 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
             ))
     
     update_metrics("data_packets_sent", len(build_data_packet(name, processed_data)))
-    log("INFO", f"Processed In-Network Function '{name}' and sent to {pit_entry['interface']}")
+    log("DEBUG", f"Processed In-Network Function '{name}' and sent to {pit_entry['interface']}")
 
     cleanup_flags["delete_pit"] = True
     return processed_data
@@ -999,6 +1059,7 @@ def build_interest_packet(name, dest_port=None):
     header += struct.pack(packetStruct.NAME_LENGTH_FORMAT, len(name_bytes))
     core = header + name_bytes
     checksum = compute_checksum(core).to_bytes(1, 'big')
+    print(f"checksum: {checksum}")
     packet = packetStruct.PREAMBLE + core + checksum + packetStruct.POSTAMBLE
     log("SUCCESS", f"Built interest packet for '{name}'")
     return packet

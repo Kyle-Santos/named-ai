@@ -5,8 +5,10 @@
 import struct
 
 # Start and End Delimiters
-PREAMBLE = b'\xDE\xAD' # 2 bytes
-POSTAMBLE = b'\xBE\xEF'   # 2 bytes
+PREAMBLE = b'\x7E' # 1 byte
+# POSTAMBLE = b'\xFF'   # 1 byte
+# PREAMBLE = b'\xDE\xAD' # 2 bytes for better framing
+POSTAMBLE = b'\xBE\xEF'   # 2 bytes for better framing
 
 
 ######################################
