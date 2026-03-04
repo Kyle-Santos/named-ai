@@ -138,6 +138,7 @@ def processor_thread():
                     if NN.NODE_NAME.startswith("/dlsu/goks/cam"):
                         log("DEBUG", f"FINAL Parsing Time: {NN.METRICS['parsing_time'] * 1000:.4f} ms")
                         log("DEBUG", f"Finished processing Interest '{parsed['name']}' in {NN.METRICS['processing_time'] * 1000:.4f} ms")
+
                 elif parsed["type"] == "data":         
                     # Process Data 
                     start_time = time.time()
@@ -147,8 +148,19 @@ def processor_thread():
                     if parsed["frag_num"] == parsed["frag_total"] or parsed["frag_num"] is None:
                         log("DEBUG", f"FINAL Parsing Time: {NN.METRICS['parsing_time'] * 1000:.4f} ms")
                         log("DEBUG", f"Finished processing Data '{parsed['name']}' in {NN.METRICS['processing_time'] * 1000:.4f} ms")
-                        NN.set_metrics("parsing_time", 0)
-                        NN.set_metrics("processing_time", 0)
+
+                        NN.append_metrics_to_csv({
+                            "name": parsed["name"],
+                            "RTT": NN.METRICS["ave_RTT"],  # in ms
+                            "interest_sent_time": NN.METRICS["interest_sent_time"], # make this float
+                            "interest_receive_time": NN.METRICS["interest_receive_time"],
+                            "data_sent_time": NN.METRICS["data_sent_time"],
+                            "data_receive_time": NN.METRICS["data_receive_time"],
+                            "parsing_time": NN.METRICS["parsing_time"],
+                            "processing_time": NN.METRICS["processing_time"],
+                            "send_time": NN.METRICS["send_time"]
+                        })
+
             except Exception as e:
                 msg = f"[Processor] Error processing packet: {e}"
                 print(msg)
@@ -211,6 +223,19 @@ def sender():
             end_time = time.time()
             NN.update_metrics("send_time", end_time - start_time)
             log("DEBUG", f"Sent response to {addr} in {NN.METRICS['send_time'] * 1000:.4f} ms")
+
+            if NN.NODE_NAME.startswith("/dlsu/goks/cam"):
+                NN.append_metrics_to_csv({
+                    "name": NN.NODE_NAME,  # or use a specific name if available
+                    "RTT": NN.METRICS["ave_RTT"],  # in ms
+                    "interest_sent_time": NN.METRICS["interest_sent_time"], # make this float
+                    "interest_receive_time": NN.METRICS["interest_receive_time"],
+                    "data_sent_time": NN.METRICS["data_sent_time"],
+                    "data_receive_time": NN.METRICS["data_receive_time"],
+                    "parsing_time": NN.METRICS["parsing_time"],
+                    "processing_time": NN.METRICS["processing_time"],
+                    "send_time": NN.METRICS["send_time"]
+                })
         except Exception as e:
             msg = f"[Sender] Error: {e}"
             print(msg)

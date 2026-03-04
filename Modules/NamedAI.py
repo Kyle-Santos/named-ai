@@ -210,6 +210,9 @@ def append_metrics_to_csv(metrics):
                 "data_receive_time",
                 "data_sent_time",
                 "data_latency",
+                "parsing_time",
+                "processing_time",
+                "send_time",
             ])
 
         writer.writerow([
@@ -222,6 +225,9 @@ def append_metrics_to_csv(metrics):
             f"{metrics['data_receive_time'] % 1000000}",
             f"{metrics['data_sent_time'] % 1000000}",
             "",
+            f"{metrics['parsing_time'] * 1000:.2f}",
+            f"{metrics['processing_time'] * 1000:.2f}",
+            f"{metrics['send_time'] * 1000:.2f}",
         ])
 
         # reset to 0
@@ -229,6 +235,10 @@ def append_metrics_to_csv(metrics):
         METRICS["interest_receive_time"] = 0
         METRICS["data_sent_time"] = 0
         METRICS["data_receive_time"] = 0
+        set_metrics("parsing_time", 0)
+        set_metrics("processing_time", 0)
+        set_metrics("send_time", 0)
+
 
 # metrics
 METRICS = {
@@ -616,14 +626,14 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
             f"Data '{name}' sent at {sent_time.timestamp()} to {addr}"
         )
 
-        append_metrics_to_csv({
-            "name": f"{name}",
-            "RTT": 0,
-            "interest_sent_time": METRICS["interest_sent_time"], # make this float
-            "interest_receive_time": METRICS["interest_receive_time"],
-            "data_sent_time": METRICS["data_sent_time"],
-            "data_receive_time": METRICS["data_receive_time"]
-        })
+        # append_metrics_to_csv({
+        #     "name": f"{name}",
+        #     "RTT": 0,
+        #     "interest_sent_time": METRICS["interest_sent_time"], # make this float
+        #     "interest_receive_time": METRICS["interest_receive_time"],
+        #     "data_sent_time": METRICS["data_sent_time"],
+        #     "data_receive_time": METRICS["data_receive_time"]
+        # })
         
         update_metrics("data_packets_sent", len(response))
 
@@ -870,9 +880,11 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             #     f"Data '{name}' processing delay: {data_delay * 1000:.4f} ms")
             pit_entry = PIT[original_name]
             rtt = time.time() - pit_entry["time"]
+            METRICS["ave_RTT"] = 0.0
             if METRICS["ave_RTT"] == 0.0:
                 METRICS["ave_RTT"] = rtt * 1000  # in ms
             METRICS["ave_RTT"] = (METRICS["ave_RTT"] + rtt * 1000) / 2
+
             rtt_ms = rtt * 1000
             log("DEBUG", f"RTT for '{original_name}': {rtt_ms:.4f}ms, Average RTT: {METRICS['ave_RTT']:.4f}ms")
 
@@ -913,19 +925,16 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             set_metrics("send_time", 0) """
             # send interest /dlsu/goks/cam/capture8.jpg
             
-            append_metrics_to_csv({
-                "name": original_name,
-                "RTT": rtt_ms,
-                "interest_sent_time": METRICS["interest_sent_time"], # make this float
-                "interest_receive_time": METRICS["interest_receive_time"],
-                "data_sent_time": METRICS["data_sent_time"],
-                "data_receive_time": METRICS["data_receive_time"]
-            })
+            # append_metrics_to_csv({
+            #     "name": original_name,
+            #     "RTT": rtt_ms,
+            #     "interest_sent_time": METRICS["interest_sent_time"], # make this float
+            #     "interest_receive_time": METRICS["interest_receive_time"],
+            #     "data_sent_time": METRICS["data_sent_time"],
+            #     "data_receive_time": METRICS["data_receive_time"]
+            # })
 
-            log(
-                "DEBUG",
-                f"Data '{name}' received at {receive_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
-            )
+            # log( "DEBUG", f"Data '{name}' received at {receive_time.strftime('%H:%M:%S.%f')}")  # HH:MM:SS.mmm
 
         return cleanup_flags["delete_pit"]
 
