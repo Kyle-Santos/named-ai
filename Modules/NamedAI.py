@@ -35,6 +35,8 @@ def log(level, message, path=""):
 # IP_ADDR = "127.0.0.1"
 BAUD_RATE = 115200
 XBEE_PORT = None
+SERIAL_LOCK = threading.Lock()
+SENDING = threading.Event()
 
 def create_serial_connection():
     ser = serial.Serial(XBEE_PORT, BAUD_RATE, timeout=0, rtscts=True)
@@ -78,8 +80,11 @@ def create_interface(interfaces):
 def send_packet(sock, addr, packet_bytes):
     """Send packet via XBee serial (addr unused but kept for compatibility)."""
     try:
-        sock.write(packet_bytes)  
-        sock.flush()
+        SENDING.set()
+        with SERIAL_LOCK:
+            sock.write(packet_bytes)  
+            sock.flush()
+        SENDING.clear()
         log("DEBUG", f"Sent {len(packet_bytes)} bytes over XBee")
     except Exception as e:
         log("ERROR", f"XBee send failed: {e}")
@@ -90,7 +95,12 @@ def receive_packet(sock, buf: list):
     buf is a single-element list [b""] used as a mutable reference.
     """
     try:
-        buf[0] += sock.read(256)
+        if SENDING.is_set():
+            time.sleep(0.001)
+            return None
+        
+        with SERIAL_LOCK:
+            buf[0] +=  sock.read(1024)  # read available bytes (non-blocking due to timeout=0)
 
         # Discard anything before the first preamble
         start = buf[0].find(packetStruct.PREAMBLE)
@@ -98,7 +108,7 @@ def receive_packet(sock, buf: list):
             buf[0] = b""
             return None
         if start > 0:
-            print(buf[0])
+            # print(buf[0])
             buf[0] = buf[0][start:]
 
         # Return the first complete packet if one exists
@@ -135,17 +145,6 @@ def parse_packet(packet_bytes):
     # Remove preamble and postamble
     core = packet_bytes[len(packetStruct.PREAMBLE):-len(packetStruct.POSTAMBLE)]
 
-    # Check packet integrity through checksum
-    checksum = core[-1]
-    valid = compute_checksum(core[:-1]) == checksum
-    # print(core)
-    print("checksum:", compute_checksum(core[:-1]), "==", checksum)
-    if not valid:
-        return None, "Checksum mismatch"
-    
-    # Extract identifier
-    identifier = struct.unpack(packetStruct.IDENTIFIER_FORMAT, core[0:1])[0]
-
     # Extract adress
     address = struct.unpack(packetStruct.ADDRESS_FORMAT, core[1:2])[0]
     # first 4 bits src, last 4 bits dst
@@ -153,8 +152,20 @@ def parse_packet(packet_bytes):
     dst = (address & 0b1111) + 9000
 
     if dst not in [INTERFACES[face]["port"] for face in INTERFACES]:  # if dst is 0 or matches this node's port, it's for us
-        log("WARN", f"Packet received for dst port {dst}, which does not match this node's interfaces")
-        return None, "Packet not addressed to this node"
+        # log("WARN", f"Packet received for dst port {dst}, which does not match this node's interfaces")
+        return None, f"Packet not addressed to this node, Packet received for dst port {dst}"
+
+    # Check packet integrity through checksum
+    checksum = core[-1]
+    valid = compute_checksum(core[:-1]) == checksum
+    # print(core)
+    # print("checksum:", compute_checksum(core[:-1]), "==", checksum)
+    if not valid:
+        return None, "Checksum mismatch"
+    
+    # Extract identifier
+    identifier = struct.unpack(packetStruct.IDENTIFIER_FORMAT, core[0:1])[0]
+  
 
     # Decide packet type
     pkt_type = (identifier >> 4) & 0b11  # extract PP bits
@@ -202,7 +213,60 @@ def parse_packet(packet_bytes):
     return None, "Unknown packet type"
 
 
+def parse_frag_suffix(name: str):
+    """
+    If name ends with [x:y], return (base_name, frag_num, frag_total).
+    Otherwise return (name, None, None).
 
+    Examples
+    --------
+    parse_frag_suffix("/dlsu/goks/cam/img[66:70]")
+        → ("/dlsu/goks/cam/img", 66, 70)
+    parse_frag_suffix("/dlsu/goks/cam/img")
+        → ("/dlsu/goks/cam/img", None, None)
+    """
+    match = re.search(r"\[(\d+):(\d+)\]$", name)
+    if match:
+        base      = name[:match.start()]
+        frag_num  = int(match.group(1))
+        frag_total = int(match.group(2))
+        return base, frag_num, frag_total
+    return name, None, None
+
+def _forward_retransmit_interest(name, base_name, incoming_interface,
+                                  sock, SEND_QUEUE):
+    """
+    Forward a fragment-specific retransmit interest upstream via FIB.
+
+    Uses base_name for the FIB lookup so [x:y] suffix doesn't break matching,
+    but forwards the full name (with [x:y]) so the upstream node knows which
+    specific fragment is being requested.
+
+    Suppresses forwarding if the upstream face is the same as the incoming
+    interface (direction check — prevents loops in XBee broadcast topology).
+    """
+    route = lookup_fib(base_name)   # ← base_name, not name with [x:y]
+    if not route:
+        log("WARN",
+            f"[RetransmitFwd] No FIB route for '{base_name}', "
+            f"cannot forward '{name}'")
+        return
+
+    forward_face, dest_port = route
+
+    # Direction check: don't forward back toward the requester
+    if forward_face == incoming_interface:
+        log("DEBUG",
+            f"[RetransmitFwd] Suppressing '{name}' — upstream face "
+            f"'{forward_face}' == incoming '{incoming_interface}' (loop prevention)")
+        return
+
+    src_port = INTERFACES[forward_face]["port"]
+    pkt = build_interest_packet(name, dest_port, src_port)  # full name with [x:y]
+    SEND_QUEUE.put((INTERFACES[forward_face]["sock"], None, [pkt]))
+    log("SUCCESS",
+        f"[RetransmitFwd] Forwarded '{name}' via {forward_face} → port {dest_port}")
+    update_metrics("interests_sent")
 
 #######################
 # Metrics Calculation #
@@ -316,12 +380,14 @@ def update_metrics(metric_name, value=1):
         log("WARN", f"Unknown metric '{metric_name}'")
         return
     METRICS[metric_name] += value
+
 def set_metrics(metric_name, value =1):
     """Set a specific metric counter (time)."""
     if metric_name not in METRICS:
         log("WARN", f"Unknown metric, '{metric_name}'")
         return
     METRICS[metric_name] = value
+
 def get_metrics():
     """Retrieve current metrics."""
     # Calculate PDR
@@ -341,7 +407,7 @@ def get_metrics():
 ##################
 NODE_NAME = None
 STORAGE_PATH = ""
-INTEREST_LIFETIME = 360  # seconds
+INTEREST_LIFETIME = 120  # seconds
 
 INTERFACES = {}  # port -> face, sock, port 
 
@@ -366,6 +432,8 @@ FUNCTIONS_TABLE = {}   # Functions Table
 NODE_FUNCTIONS_MAPPING = {}
 
 FRAG_BUFFER = {}
+FRAG_TIMEOUT        = 5.0   # seconds before declaring fragment(s) lost
+FRAG_MAX_RETRIES    = 4     # give up after this many retransmit attempts
 
 def store_interest(name, face, addr, funcs=None, waiting_for=None):
     """Store an Interest in the PIT."""
@@ -614,14 +682,22 @@ def get_PIT_entry(name):
 #####################
 # Processing Module #
 #####################
+PAYLOAD_SIZE = 100
 
 def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     """Process Interest: check CS or forward."""
     name = packet["name"]
     update_metrics("interests_received")
-    # set_metrics("local_int_rcv_time", time.time())
+
     if METRICS["test_start_time"] == 0.0:
         METRICS["test_start_time"] = time.time()
+
+    # ── NEW: detect fragment-specific retransmit request ──────────────────
+    base_name, req_frag_num, req_frag_total = parse_frag_suffix(name)
+    is_frag_retransmit = req_frag_num is not None
+    # Look up content using the base name (CS never stores [x:y] suffixes)
+    cs_lookup_name = base_name if is_frag_retransmit else name
+    # ──────────────────────────────────────────────────────────────────────
 
     sent_time = datetime.now()
     METRICS["interest_receive_time"] = sent_time.timestamp() # for easier readability in CSV
@@ -632,7 +708,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     )
     
     # First check Content Store
-    cached_data = lookup_content(name)
+    cached_data = lookup_content(cs_lookup_name)
     if cached_data:
         sent_time = datetime.now()
         METRICS["interest_receive_time"] = sent_time.timestamp() # for easier readability in CSV
@@ -643,38 +719,76 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
         )
 
         update_CS_timestamp(name)
-        bytes = cached_data["data"]
+        data_bytes = cached_data["data"]
         
-        response = build_data_packet(name, bytes, packet["src"], packet["dst"])
-        update_metrics("data_total_sent") 
-        SEND_QUEUE.put((sock, addr, response))
-        log("INFO", f"Served '{name}' from CS to {sock}")
+        if is_frag_retransmit:
+            # ── Serve only the requested fragment ─────────────────────────
+            log("INFO",
+                f"Retransmit request for fragment {req_frag_num}/{req_frag_total} "
+                f"of '{base_name}' — serving from CS")
 
+            # Re-derive the same fragmentation the original build used
+            max_payload = PAYLOAD_SIZE - (12 + len(base_name))
+            fragments   = fragment_data(data_bytes, max_payload=max_payload)
 
-        sent_time = datetime.now()
-        METRICS["data_sent_time"] = sent_time.timestamp()
-        log(
-            "DEBUG",
-            # f"Data '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
-            f"Data '{name}' sent at {sent_time.timestamp()} to {addr}"
-        )
+            if req_frag_num < 1 or req_frag_num > len(fragments):
+                log("ERROR",
+                    f"Requested fragment {req_frag_num} out of range "
+                    f"(have {len(fragments)}) for '{base_name}'")
+                return
 
-        # append_metrics_to_csv({
-        #     "name": f"{name}",
-        #     "RTT": 0,
-        #     "interest_sent_time": METRICS["interest_sent_time"], # make this float
-        #     "interest_receive_time": METRICS["interest_receive_time"],
-        #     "data_sent_time": METRICS["data_sent_time"],
-        #     "data_receive_time": METRICS["data_receive_time"]
-        # })
-        
-        update_metrics("data_packets_sent", len(response))
+            # Build a single-fragment data packet for just this fragment
+            frag_payload = fragments[req_frag_num - 1]   # list is 0-indexed
+            frag_name    = f"{base_name}[{req_frag_num}:{req_frag_total}]"
 
-        return 
+            identifier = (packetStruct.PROTOCOL_VERSION << 6) | (packetStruct.PACKET_TYPE_DATA << 4)
+            src_port   = packet["dst"] - 9000   # we are the data source
+            dst_port   = packet["src"] - 9000
+
+            header  = struct.pack(packetStruct.IDENTIFIER_FORMAT, identifier)
+            header += struct.pack(packetStruct.ADDRESS_FORMAT, (src_port << 4) | dst_port)
+            header += struct.pack(packetStruct.NAME_LENGTH_FORMAT, len(frag_name.encode()))
+            header += struct.pack(packetStruct.DATA_LENGTH_FORMAT, len(frag_payload))
+
+            core      = header + frag_name.encode() + frag_payload
+            checksum  = compute_checksum(core).to_bytes(1, "big")
+            pkt_bytes = packetStruct.PREAMBLE + core + checksum + packetStruct.POSTAMBLE
+
+            SEND_QUEUE.put((sock, addr, [pkt_bytes]))
+            log("SUCCESS",
+                f"Sent retransmit fragment {req_frag_num}/{req_frag_total} "
+                f"for '{base_name}' ({len(pkt_bytes)} bytes)")
+            update_metrics("data_packets_sent")
+
+        else:
+            # ── Normal CS hit: send all fragments as before ────────────────
+            sent_time = datetime.now()
+            METRICS["interest_receive_time"] = sent_time.timestamp()
+            log("DEBUG", f"Interest '{name}' received at {sent_time.strftime('%H:%M:%S.%f')}")
+
+            response = build_data_packet(name, data_bytes, packet["src"], packet["dst"])
+            update_metrics("data_total_sent")
+            SEND_QUEUE.put((sock, addr, response))
+            log("INFO", f"Served '{name}' from CS to {sock}")
+
+            sent_time = datetime.now()
+            METRICS["data_sent_time"] = sent_time.timestamp()
+            log("DEBUG", f"Data '{name}' sent at {sent_time.timestamp()} to {addr}")
+
+            update_metrics("data_packets_sent", len(response))
+
+        return   # ← both branches return here; rest of function unchanged
     
-    if name in PIT:
-        log("INFO", f"Interest '{name}' already in PIT, aggregating")
-        store_interest(name, interface, addr)
+    # Use base_name for lookup so '/8.jpg[16:881]' matches PIT entry '/8.jpg'
+    pit_lookup_name = base_name if is_frag_retransmit else name
+    if pit_lookup_name in PIT:
+        log("INFO", f"Interest '{name}' aggregated into PIT entry '{pit_lookup_name}'")
+        store_interest(pit_lookup_name, interface, addr)
+        if is_frag_retransmit:
+            # This node has a PIT entry but not the data (not in CS).
+            # Forward the fragment request upstream toward the data source.
+            _forward_retransmit_interest(name, base_name, interface,
+                                          sock, SEND_QUEUE)
         return
 
     # If this Interest is meant for this node
@@ -1045,40 +1159,120 @@ def handle_fragmented_local_processing(name, waiting_for_name, data, frag_num,
     """Handle fragmented data for local processing"""
     # Initialize fragment buffer
     log("INFO", f"Received fragment {frag_num}/{frag_total} for '{name}' during local processing")
+    
     if name not in FRAG_BUFFER:
-        FRAG_BUFFER[name] = {"frags": {}, "expected": frag_total}
+        FRAG_BUFFER[name] = {
+            "frags": {},
+            "expected": frag_total,
+            "last_updated": time.time(),   # NEW — watchdog uses this
+            "retransmit_count": 0,         # NEW — give-up counter
+        }
         log("SUCCESS", f"Initialized fragment buffer for '{name}' expecting {frag_total} parts")
 
     FRAG_BUFFER[name]["frags"][frag_num] = data
-    # log("SUCCESS", f"Buffered fragment {frag_num}/{frag_total} for '{name}'")
+    FRAG_BUFFER[name]["last_updated"] = time.time()   # NEW — refresh on every arrival
 
-    # Check if all fragments received
     if len(FRAG_BUFFER[name]["frags"]) == frag_total:
         log("INFO", f"Node requested the data - processing locally")
-        log("INFO", f"All fragments received for '{name}', reassembling fragments (total={frag_total})")
+        log("INFO", f"All fragments received for '{name}', reassembling (total={frag_total})")
         full_data = reassemble_fragments(name, frag_total)
 
-        # Save original data if this is an NFN request
+        if full_data is None:                          # NEW — guard against gaps
+            log("WARN", f"Reassembly failed for '{name}', watchdog will retry")
+            return None
+
         if waiting_for_name:
             return process_nfn_request(
                 name, waiting_for_name, full_data,
                 pit_entry, SEND_QUEUE, cleanup_flags
             )
         else:
-            # Regular fragmented data (no NFN)
             cleanup_flags["delete_pit"] = True
-            return full_data 
-    
-    return None  # Not all fragments received yet
+            return full_data
+
+    return None  # not all fragments received yet
 
 
 # Reassemble fragments
 def reassemble_fragments(name, frag_total):
-    """Reassemble fragments for a given name."""
-    full_data = b"".join(FRAG_BUFFER[name]["frags"][i] for i in range(1, frag_total+1))
-    # log("INFO", f"Reassembling fragments for '{name}', total={frag_total}")
+    """Reassemble fragments for a given name. Returns None if any fragment is missing."""
+    frags   = FRAG_BUFFER[name]["frags"]
+    missing = [i for i in range(1, frag_total + 1) if i not in frags]
+
+    if missing:
+        log("WARN", f"Cannot reassemble '{name}': missing fragments {missing}")
+        return None   # caller must handle None; watchdog will re-request
+
+    full_data = b"".join(frags[i] for i in range(1, frag_total + 1))
     log("INFO", f"Fragment assembly complete for '{name}', final_size={len(full_data)} bytes")
     return full_data
+
+
+def frag_watchdog(SEND_QUEUE):
+    """
+    Periodically scans FRAG_BUFFER for stalled assemblies.
+
+    For each stalled buffer:
+      - Identifies which fragment numbers are missing.
+      - Re-issues an Interest packet for each missing fragment.
+      - Gives up after FRAG_MAX_RETRIES attempts and removes the buffer.
+    """
+    while True:
+        time.sleep(1.0)
+        now = time.time()
+
+        for name in list(FRAG_BUFFER.keys()):
+            buf = FRAG_BUFFER.get(name)
+            if buf is None:
+                continue
+
+            # Skip buffers that are still receiving data
+            if (now - buf["last_updated"]) < FRAG_TIMEOUT:
+                continue
+
+            expected = set(range(1, buf["expected"] + 1))
+            received = set(buf["frags"].keys())
+            missing  = sorted(expected - received)
+
+            if not missing:
+                continue  # complete — process_data will clean up
+
+            # Give up if we've retried too many times
+            if buf["retransmit_count"] >= FRAG_MAX_RETRIES:
+                log("ERROR",
+                    f"[FragWatcher] Giving up on '{name}' after "
+                    f"{FRAG_MAX_RETRIES} retries — dropping buffer. "
+                    f"Still missing: {missing}")
+                FRAG_BUFFER.pop(name, None)
+                # Also clean up the dangling PIT entry so it doesn't linger
+                with PIT_LOCK:
+                    if name in PIT:
+                        PIT.pop(name)
+                        log("WARN", f"[FragWatcher] Removed stale PIT entry for '{name}'")
+                continue
+
+            buf["retransmit_count"] += 1
+            buf["last_updated"] = now   # reset timer for next retry window
+
+            log("WARN",
+                f"[FragWatchdog] Fragment timeout for '{name}' "
+                f"(attempt {buf['retransmit_count']}/{FRAG_MAX_RETRIES}): "
+                f"re-requesting fragments {missing}")
+
+            route = lookup_fib(name)
+            if not route:
+                log("WARN", f"[FragWatchdog] No route for '{name}', cannot retransmit")
+                continue
+
+            forward_face, dest_port = route
+            src_port = INTERFACES[forward_face]["port"]
+
+            for frag_idx in missing:
+                # Re-request the specific fragment using the [x:y] notation
+                frag_name = f"{name}[{frag_idx}:{buf['expected']}]"
+                pkt = build_interest_packet(frag_name, dest_port, src_port)
+                SEND_QUEUE.put((INTERFACES[forward_face]["sock"], None, [pkt]))
+                log("INFO", f"[FragWatchdog] Re-issued interest for '{frag_name}'")
 
 
 def save_data_to_file(name, data_bytes):
@@ -1249,7 +1443,7 @@ def build_data_packet(name, data, dest_port=None, src_port=None):
     data_bytes = data
 
     packets = []
-    fragments = fragment_data(data_bytes, max_payload=255-(12+len(name)))  # 5 bytes for header fields, rest for payload
+    fragments = fragment_data(data_bytes, max_payload=PAYLOAD_SIZE-(12+len(name)))  # 5 bytes for header fields, rest for payload
 
     src_port = src_port - 9000 if src_port is not None else INTERFACES["face0"]["port"] - 9000
     dst_port = dest_port - 9000 if dest_port is not None else INTERFACES["face0"]["dst_port"] - 9000
@@ -1279,7 +1473,7 @@ def build_data_packet(name, data, dest_port=None, src_port=None):
     return packets
 
 
-def fragment_data(data_bytes, max_payload=128):
+def fragment_data(data_bytes, max_payload=PAYLOAD_SIZE):
     """
     Splits data into fragments if > max_payload.
     Returns a list of fragments

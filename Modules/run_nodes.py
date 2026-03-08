@@ -9,7 +9,7 @@ commands = [
     #["python", ".\\node_runner.py", "--client", "user1"],
     #["python", ".\\node_runner.py", "--client", "user2"],
     #["python", ".\\node_runner.py", "--client", "user3"],
-    ["python", ".\\node_runner.py", "--client", "user"]
+    # ["python", ".\\node_runner.py", "--client", "user"]
 ]
 
 # List to keep track of running processes

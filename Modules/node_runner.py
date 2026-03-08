@@ -111,7 +111,7 @@ def processor_thread():
         try:
             packet, sock, face, entry = PACKET_QUEUE.get()
             
-            print(packet)
+            # print(packet)
 
             start_time = time.time()
             # Parse the packet
@@ -119,25 +119,27 @@ def processor_thread():
             end_time = time.time()
             NN.update_metrics("parsing_time", end_time - start_time)
             
-            print(parsed)
+            # print("Parsed content: ", parsed)
             if err:
                 msg = f"Parse error: {err}"
                 print(msg)
-                log("ERROR", msg)
+                # log("ERROR", msg)
+                if err == "Checksum mismatch":
+                    log("DEBUG", f"Parsed packet: {packet}")
                 continue
             
             # You'll need to track face/sock/addr information
             # This might require a separate metadata structure or per-face buffers
             msg = f"Processing {parsed['type']} packet \"{parsed['name']}\""
             # print(f"\n{msg}")
-            log("INFO", msg)
+            # log("INFO", msg)
 
             face = next(
                 (iface for iface in NN.INTERFACES.values()
                 if iface["port"] == parsed["dst"]),
                 None
             )
-            log("DEBUG", f"Identified incoming face: {face['face'] if face else 'Unknown'} for packet destined to port {parsed['dst']}")
+            # log("DEBUG", f"Identified incoming face: {face['face'] if face else 'Unknown'} for packet destined to port {parsed['dst']}")
             try:
                 # Process based on packet type
                 if parsed["type"] == "interest":
@@ -152,6 +154,7 @@ def processor_thread():
 
                 elif parsed["type"] == "data":
                     start_time = time.time()
+                    log("DEBUG", f"Processing fragment {parsed['frag_num']}/{parsed['frag_total']}")
                     NN.process_data(parsed, packet, sock=sock, 
                                   SEND_QUEUE=SEND_QUEUE)
                     end_time = time.time()
@@ -195,6 +198,8 @@ def receiver(face, entry):
             packet = NN.receive_packet(sock, buf)
             if packet:
                 PACKET_QUEUE.put((packet, sock, face, entry))
+            # else:
+            #     time.sleep(0.001)  # avoid busy waiting if no complete packet
 
         except Exception as e:
             log("ERROR", f"[Receiver {face}] {e}")
@@ -210,10 +215,11 @@ def sender():
             start_time = time.time()
             for resp in response:
                 NN.send_packet(sock, addr, resp)
-                time.sleep(0.01)  # slight delay to avoid UDP packet loss
+                sleep = len(resp) * 10 / 115200 * 1.2
+                time.sleep(0.02)  # slight delay to avoid UDP packet loss
             end_time = time.time()
             NN.update_metrics("send_time", end_time - start_time)
-            log("DEBUG", f"Sent response to {addr} in {NN.METRICS['send_time'] * 1000:.4f} ms")
+            # log("DEBUG", f"Sent response to {addr} in {NN.METRICS['send_time'] * 1000:.4f} ms")
 
             if NN.NODE_NAME.startswith("/dlsu/goks/cam"):
                 NN.append_metrics_to_csv({
@@ -272,6 +278,11 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
 
     # Start PIT cleanup thread
     threading.Thread(target=pit_cleanup_worker, args=(), daemon=False, name="PIT_Cleanup").start()
+
+    threading.Thread(
+      target=NN.frag_watchdog, args=(SEND_QUEUE,),
+      daemon=False, name="FragWatchdog"
+    ).start()
 
     # Monitor threads
     def thread_monitor():

@@ -11,7 +11,7 @@ data-preprocessing/Face_Dataset
 
 ML-models/model1_insightface/insightface
 ML-models/model2_facenet/*
-# ML-models/model3_mfn/*
+ML-models/model3_mfn/*
 ML-models/model1_insightface/onnxruntime
 data-preprocessing/facebank/*
 data-preprocessing/test_images/*

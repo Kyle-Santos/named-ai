@@ -43,7 +43,7 @@ send interest /dlsu/goks/cam/recognize(mobilefacenet(/dlsu/goks/cam/capture8.jpg
 
 send interest /dlsu/goks/cam/recognize(mobilefacenet(/dlsu/goks/cam/capture1.jpg))
 
-send interest /1.txt
+send interest /dlsu/goks/cam/capture8.jpg
 
 send interest /txt7.txt
 
@@ -57,15 +57,11 @@ send interest /dlsu/goks/cam/hello.txt
 
 send interest /dlsu/grayscale(/dlsu/goks/cam/capture8.jpg)
 
-
 send interest /dlsu/grayscale(/dlsu/goks/detect(/dlsu/goks/cam/capture1.jpg))
-
 
 send interest /dlsu/goks/resize(detect(/dlsu/goks/cam/capture8.jpg))
 
-
 send interest /dlsu/andrew/grayscale(/dlsu/goks/resize(detect(/dlsu/goks/cam/capture1.jpg)))
-
 
 send interest /dlsu/velasco/normalize(/dlsu/andrew/grayscale(/dlsu/goks/resize(detect(/dlsu/goks/cam/capture1.jpg))))
 

@@ -34,7 +34,7 @@
                 "/dlsu": ["orchestrate", "recognize"],
                 "/dlsu/goks": ["detect", "resize_facenet", "resize_mfn", "resize_insightface", "mfn_embedding", "grayscale", "insightface_embedding", "facenet_embedding", "normalize"]
             },
-            "xbee_port": "/dev/tty.usbserial-AB0JV2MF"
+            "xbee_port": "COM3"
         },
 
         {
@@ -52,7 +52,8 @@
                 "/dlsu/goks/cam": { "face": "face0", "port": 9008 }
             },
             "storage": "nfn_nodes/goks/",
-            "max_storage_mb": 50
+            "max_storage_mb": 50,
+            "xbee_port": "COM4"
         },
 
         {
@@ -97,7 +98,7 @@
             },
             "storage": "goks_cam_node/captures/",
             "max_storage_mb": 500,
-            "xbee_port": "/dev/tty.usbserial-AB0JVASL"
+            "xbee_port": "COM9"
         }
     ]
 }
