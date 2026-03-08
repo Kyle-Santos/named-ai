@@ -71,9 +71,9 @@ def load_node_config(config_path: str, node_name: str):
         #     functions.load_facenet()
         #     print("Facenet model loaded.")
 
-        if func_name == "mfn_embedding":
-            functions.load_mfn()
-            print("MobileFaceNet model loaded.")
+        # if func_name == "mfn_embedding":
+        #     functions.load_mfn()
+        #     print("MobileFaceNet model loaded.")
             
         NN.FUNCTIONS_TABLE[func_name] = functions.get_function(func_name)
 
@@ -119,6 +119,7 @@ def processor_thread():
             end_time = time.time()
             NN.update_metrics("parsing_time", end_time - start_time)
             
+            print(parsed)
             if err:
                 msg = f"Parse error: {err}"
                 print(msg)
@@ -131,13 +132,18 @@ def processor_thread():
             # print(f"\n{msg}")
             log("INFO", msg)
 
-
+            face = next(
+                (iface for iface in NN.INTERFACES.values()
+                if iface["port"] == parsed["dst"]),
+                None
+            )
+            log("DEBUG", f"Identified incoming face: {face['face'] if face else 'Unknown'} for packet destined to port {parsed['dst']}")
             try:
                 # Process based on packet type
                 if parsed["type"] == "interest":
                     start_time = time.time()
                     NN.process_interest(parsed, addr=None, sock=sock, 
-                                      SEND_QUEUE=SEND_QUEUE, interface=None)
+                                      SEND_QUEUE=SEND_QUEUE, interface=face['face'])
                     end_time = time.time()
                     NN.update_metrics("processing_time", end_time - start_time)
                     if NN.NODE_NAME.startswith("/dlsu/goks/cam"):
@@ -204,7 +210,7 @@ def sender():
             start_time = time.time()
             for resp in response:
                 NN.send_packet(sock, addr, resp)
-                time.sleep(0.001)  # slight delay to avoid UDP packet loss
+                time.sleep(0.01)  # slight delay to avoid UDP packet loss
             end_time = time.time()
             NN.update_metrics("send_time", end_time - start_time)
             log("DEBUG", f"Sent response to {addr} in {NN.METRICS['send_time'] * 1000:.4f} ms")
@@ -245,10 +251,11 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
     threads = []
 
     # Start receiver threads
-    for face, entry in interfaces.items():
-        t = threading.Thread(target=receiver, args=(face, entry), daemon=False, name=f"Receiver-{face}")
-        t.start()
-        threads.append(t)
+    # for face, entry in interfaces.items():
+    face = list(interfaces.keys())[0]
+    t = threading.Thread(target=receiver, args=(face, interfaces[face]), daemon=False, name=f"Receiver-{face}")
+    t.start()
+    threads.append(t)
 
     # Start global processor thread - PROCESS ALL PACKETS
     t = threading.Thread(

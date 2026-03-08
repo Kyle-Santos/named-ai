@@ -29,11 +29,12 @@
                 "user": { "face": "face3", "port": 9015 }
             },  
             "storage": "nfn_nodes/dlsu/",
-            "max_storage_mb": 1,
+            "max_storage_mb": 10,
             "node_functions_mapping": {
                 "/dlsu": ["orchestrate", "recognize"],
                 "/dlsu/goks": ["detect", "resize_facenet", "resize_mfn", "resize_insightface", "mfn_embedding", "grayscale", "insightface_embedding", "facenet_embedding", "normalize"]
-            }
+            },
+            "xbee_port": "/dev/tty.usbserial-AB0JV2MF"
         },
 
         {
@@ -89,14 +90,14 @@
         {
             "name": "/dlsu/goks/cam",
             "interfaces": [
-                { "face": "face0", "port": 9008, "dst_port": 9015 }
+                { "face": "face0", "port": 9008, "dst_port": 9007 }
             ],
             "FIB": {
-                "/dlsu/goks": { "face": "face0", "port": 9015 }
+                "/dlsu/goks": { "face": "face0", "port": 9007 }
             },
             "storage": "goks_cam_node/captures/",
             "max_storage_mb": 500,
-            "xbee_port": "/dev/tty.usbserial-AB0JV8XC"
+            "xbee_port": "/dev/tty.usbserial-AB0JVASL"
         }
     ]
 }

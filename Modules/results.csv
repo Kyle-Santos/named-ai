@@ -1,11 +1,1 @@
 node,name,RTT_ms,interest_receive_time,interest_sent_time,interest_latency,data_receive_time,data_sent_time,data_latency,parsing,processing,sending_time,functions
-/dlsu/goks/cam,/dlsu/goks/cam,0.000000,622391.3991119862,0,,0,622391.429981947,,0.29,33.24,362.99,[]
-/dlsu/goks,/dlsu/goks/cam/capture1.jpg,672.591925,0,622391.3977279663,,622392.0700330734,0,,15.07,302.41,1.33,"[('detect', 273.43106269836426), ('resize_mfn', 1.7940998077392578)]"
-/dlsu/andrew,/dlsu/goks/resize_mfn(detect(/dlsu/goks/cam/capture1.jpg)),801.320076,0,622391.3949079514,,622392.195859909,0,,1.17,119.19,10.63,"[('grayscale', 22.065162658691406), ('mfn_embedding', 82.75580406188965)]"
-/dlsu,/dlsu/andrew/mfn_embedding(grayscale(/dlsu/goks/resize_mfn(detect(/dlsu/goks/cam/capture1.jpg)))),823.065042,0,622391.3879170418,,622392.2109370232,0,,0.73,11.90,2.18,"[('recognize', 8.285284042358398)]"
-user,/dlsu/recognize(mobilefacenet(/dlsu/goks/cam/capture1.jpg)),828.083038,0,622391.4037089348,,622392.2140169144,0,,0.80,1.91,25.26,[]
-/dlsu/goks/cam,/dlsu/goks/cam,0.000000,622512.786190033,0,,0,622512.802232027,,0.15,16.13,310.14,[]
-/dlsu/goks,/dlsu/goks/cam/capture1.jpg,653.084993,0,622512.7851169109,,622513.43810606,0,,9.07,337.29,1.11,"[('detect', 324.13), ('resize_mfn', 1.33)]"
-/dlsu/andrew,/dlsu/goks/resize_mfn(detect(/dlsu/goks/cam/capture1.jpg)),782.228947,0,622512.762428999,,622513.5447010994,0,,3.02,105.07,12.28,"[('grayscale', 23.49), ('mfn_embedding', 62.79)]"
-/dlsu,/dlsu/andrew/mfn_embedding(grayscale(/dlsu/goks/resize_mfn(detect(/dlsu/goks/cam/capture1.jpg)))),813.153982,0,622512.7453699112,,622513.5573899746,0,,1.07,12.30,2.49,"[('recognize', 6.39)]"
-user,/dlsu/recognize(mobilefacenet(/dlsu/goks/cam/capture1.jpg)),834.213972,0,622512.7424550056,,622513.5583159924,0,,0.41,0.92,20.73,[]
