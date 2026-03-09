@@ -432,8 +432,8 @@ FUNCTIONS_TABLE = {}   # Functions Table
 NODE_FUNCTIONS_MAPPING = {}
 
 FRAG_BUFFER = {}
-FRAG_TIMEOUT        = 5.0   # seconds before declaring fragment(s) lost
-FRAG_MAX_RETRIES    = 4     # give up after this many retransmit attempts
+FRAG_TIMEOUT        = 1.0   # seconds before declaring fragment(s) lost
+FRAG_MAX_RETRIES    = 5     # give up after this many retransmit attempts
 
 def store_interest(name, face, addr, funcs=None, waiting_for=None):
     """Store an Interest in the PIT."""
@@ -1221,13 +1221,16 @@ def frag_watchdog(SEND_QUEUE):
         time.sleep(1.0)
         now = time.time()
 
+        # Dynamic timeout based on retry count
+        dynamic_timeout = FRAG_TIMEOUT + (buf["retransmit_count"] * 2)
+        
         for name in list(FRAG_BUFFER.keys()):
             buf = FRAG_BUFFER.get(name)
             if buf is None:
                 continue
 
             # Skip buffers that are still receiving data
-            if (now - buf["last_updated"]) < FRAG_TIMEOUT:
+            if (now - buf["last_updated"]) < dynamic_timeout:
                 continue
 
             expected = set(range(1, buf["expected"] + 1))
