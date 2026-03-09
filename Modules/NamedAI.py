@@ -1225,6 +1225,23 @@ def frag_watchdog(SEND_QUEUE):
             buf = FRAG_BUFFER.get(name)
             if buf is None:
                 continue
+            
+            # ── skip if this name is part of an NFN orchestration ──
+            with PIT_LOCK:
+                pit_entry = PIT.get(name)
+                if pit_entry and pit_entry.get("waiting_for"):
+                    # This entry is waiting on a sub-interest (e.g., recognize → embedding).
+                    # Don't retransmit — the orchestration pipeline is still in progress.
+                    continue
+
+                # Also check if any OTHER PIT entry is waiting_for this name
+                is_dependency = any(
+                    e.get("waiting_for") == name
+                    for e in PIT.values()
+                )
+                if is_dependency:
+                    continue
+            # ─────────────────────────────────────────────────────────────
 
             # Dynamic timeout based on retry count
             dynamic_timeout = FRAG_TIMEOUT + (buf["retransmit_count"] * 2)
