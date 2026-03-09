@@ -37,15 +37,19 @@ send interest /dlsu/recognize(insightface(/dlsu/goks/cam/capture11.jpg))
 
 send interest /dlsu/recognize(facenet(/dlsu/goks/cam/capture11.jpg))
 
-send interest /dlsu/recognize(mobilefacenet(/dlsu/goks/cam/capture11.jpg))
+send interest /dlsu/recognize(mobilefacenet(/dlsu/goks/cam/capture1.jpg))
 
 send interest /dlsu/goks/cam/recognize(mobilefacenet(/dlsu/goks/cam/capture8.jpg))
 
-send interest /dlsu/goks/cam/recognize(mobilefacenet(/dlsu/goks/cam/capture1.jpg))
+send interest /dlsu/recognize(mobilefacenet(/14.jpg))
+
+send interest /dlsu/recognize(insightface(/14.jpg))
 
 send interest /dlsu/goks/cam/capture8.jpg
 
 send interest /txt7.txt
+
+send interest /14.jpg
 
 send interest /txt7.txt
 
