@@ -53,9 +53,9 @@ def load_node_config(config_path: str, node_name: str):
     NN.initialize_content_store(node_config.get("storage", ""))
 
     NN.NODE_FUNCTIONS_MAPPING = node_config.get("node_functions_mapping", {})
-    
+    log("DEBUG", f"Node {NN.NODE_NAME} functions mapping: {NN.NODE_FUNCTIONS_MAPPING}")
     functions_list = node_holder_function_mapping["node_functions_mapping"].get(NN.NODE_NAME, []) 
-    functions_list = []
+    # functions_list = []
     print(f"Functions for {NN.NODE_NAME}: {functions_list}")
     for func_name in functions_list:
         if func_name == "detect":
