@@ -407,7 +407,7 @@ def get_metrics():
 ##################
 NODE_NAME = None
 STORAGE_PATH = ""
-INTEREST_LIFETIME = 300  # seconds
+INTEREST_LIFETIME = 600  # seconds
 
 INTERFACES = {}  # port -> face, sock, port 
 
@@ -432,8 +432,8 @@ FUNCTIONS_TABLE = {}   # Functions Table
 NODE_FUNCTIONS_MAPPING = {}
 
 FRAG_BUFFER = {}
-FRAG_TIMEOUT        = 1.0   # seconds before declaring fragment(s) lost
-FRAG_MAX_RETRIES    = 5     # give up after this many retransmit attempts
+FRAG_TIMEOUT        = 4.0   # seconds before declaring fragment(s) lost
+FRAG_MAX_RETRIES    = 8     # give up after this many retransmit attempts
 
 def store_interest(name, face, addr, funcs=None, waiting_for=None):
     """Store an Interest in the PIT."""
@@ -682,7 +682,7 @@ def get_PIT_entry(name):
 #####################
 # Processing Module #
 #####################
-PAYLOAD_SIZE = 100
+PAYLOAD_SIZE = 99
 
 def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     """Process Interest: check CS or forward."""
@@ -1239,7 +1239,7 @@ def frag_watchdog(SEND_QUEUE):
             dynamic_timeout = FRAG_TIMEOUT + (buf["retransmit_count"] * 2)
 
             # Skip buffers that are still receiving data
-            if (now - buf["last_updated"]) < dynamic_timeout:
+            if (now - buf["last_updated"]) < FRAG_TIMEOUT:
                 continue
 
             expected = set(range(1, buf["expected"] + 1))

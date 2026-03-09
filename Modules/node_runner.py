@@ -153,7 +153,7 @@ def processor_thread():
 
                 elif parsed["type"] == "data":
                     start_time = time.time()
-                    log("DEBUG", f"Processing fragment {parsed['frag_num']}/{parsed['frag_total']}")
+                    # log("DEBUG", f"Processing fragment {parsed['frag_num']}/{parsed['frag_total']}")
                     NN.process_data(parsed, packet, sock=sock, 
                                   SEND_QUEUE=SEND_QUEUE)
                     end_time = time.time()
@@ -220,7 +220,7 @@ def sender():
             NN.update_metrics("send_time", end_time - start_time)
             # log("DEBUG", f"Sent response to {addr} in {NN.METRICS['send_time'] * 1000:.4f} ms")
 
-            if NN.NODE_NAME.startswith("/dlsu/goks/cam"):
+            if not NN.PIT and NN.NODE_NAME.startswith("/dlsu/goks/cam"):
                 NN.append_metrics_to_csv({
                     "name": NN.NODE_NAME,  # or use a specific name if available
                     "RTT": NN.METRICS["ave_RTT"],  # in ms
