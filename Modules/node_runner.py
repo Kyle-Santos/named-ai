@@ -35,7 +35,6 @@ def load_node_config(config_path: str, node_name: str):
     with open(config_path, "r") as f:
         config = json.load(f)
     node_config = next(n for n in config["nodes"] if n["name"] == node_name)
-    cam = next(n for n in config["nodes"] if n["name"] == "/dlsu/goks/cam")
 
     # NN.set_ip_addr(config.get("ip", "127.0.0.1"))
     
@@ -51,10 +50,15 @@ def load_node_config(config_path: str, node_name: str):
     # Initialize content store
     NN.initialize_content_store(node_config.get("storage", ""))
 
-    NN.NODE_FUNCTIONS_MAPPING = node_config.get("node_functions_mapping", {})
-    
-    # functions_list = cam["node_functions_mapping"].get(NN.NODE_NAME, []) 
-    functions_list = []
+    merged_functions_mapping = {}
+    for config_node in config.get("nodes", []):
+        node_functions_mapping = config_node.get("node_functions_mapping", {})
+        if isinstance(node_functions_mapping, dict):
+            merged_functions_mapping.update(node_functions_mapping)
+
+    NN.NODE_FUNCTIONS_MAPPING = merged_functions_mapping
+
+    functions_list = merged_functions_mapping.get(NN.NODE_NAME, [])
     print(f"Functions for {NN.NODE_NAME}: {functions_list}")
     for func_name in functions_list:
         if func_name == "detect":
@@ -63,17 +67,17 @@ def load_node_config(config_path: str, node_name: str):
         if func_name == "recognize":
             functions.load_facebank()
 
-        # if func_name == "insightface_embedding":
-        #     functions.load_insightface()
-        #     print("InsightFace model loaded.")
+        if func_name == "insightface_embedding":
+             functions.load_insightface()
+             print("InsightFace model loaded.")
 
-        # if func_name == "facenet_embedding":
-        #     functions.load_facenet()
-        #     print("Facenet model loaded.")
+        if func_name == "facenet_embedding":
+             functions.load_facenet()
+             print("Facenet model loaded.")
 
-        # if func_name == "mfn_embedding":
-        #     functions.load_mfn()
-        #     print("MobileFaceNet model loaded.")
+        if func_name == "mfn_embedding":
+             functions.load_mfn()
+             print("MobileFaceNet model loaded.")
             
         NN.FUNCTIONS_TABLE[func_name] = functions.get_function(func_name)
 
