@@ -195,7 +195,7 @@ def orchestrate(name: str, model, PIT, functions_mapping) -> str:
     # Tier 1: goks (closest to camera)
     # Tier 2: andrew & velasco (same priority)
     priority_tiers = [
-        ["/dlsu/gok"],            # Tier 1 (highest)
+        ["/dlsu/goks"],            # Tier 1 (highest)
         # ["/dlsu/andrew", "/dlsu/velasco"],  # Tier 2 (same priority)
     ]
 
