@@ -1157,29 +1157,28 @@ def handle_local_processing(name, waiting_for_name, data, frag_num, frag_total,
 def handle_fragmented_local_processing(name, waiting_for_name, data, frag_num, 
                                        frag_total, pit_entry, SEND_QUEUE, cleanup_flags):
     """Handle fragmented data for local processing"""
-    buffer_name = waiting_for_name or name
-    # Initialize fragment buffer    
+    # Initialize fragment buffer
     log("INFO", f"Received fragment {frag_num}/{frag_total} for '{name}' during local processing")
     
-    if buffer_name not in FRAG_BUFFER:
-        FRAG_BUFFER[buffer_name] = {
+    if name not in FRAG_BUFFER:
+        FRAG_BUFFER[name] = {
             "frags": {},
             "expected": frag_total,
             "last_updated": time.time(),   # NEW — watchdog uses this
             "retransmit_count": 0,         # NEW — give-up counter
         }
-        log("SUCCESS", f"Initialized fragment buffer for '{buffer_name}' expecting {frag_total} parts")
+        log("SUCCESS", f"Initialized fragment buffer for '{name}' expecting {frag_total} parts")
 
-    FRAG_BUFFER[buffer_name]["frags"][frag_num] = data
-    FRAG_BUFFER[buffer_name]["last_updated"] = time.time()   # NEW — refresh on every arrival
+    FRAG_BUFFER[name]["frags"][frag_num] = data
+    FRAG_BUFFER[name]["last_updated"] = time.time()   # NEW — refresh on every arrival
 
-    if len(FRAG_BUFFER[buffer_name]["frags"]) == frag_total:
+    if len(FRAG_BUFFER[name]["frags"]) == frag_total:
         log("INFO", f"Node requested the data - processing locally")
-        log("INFO", f"All fragments received for '{buffer_name}', reassembling (total={frag_total})")
-        full_data = reassemble_fragments(buffer_name, frag_total)
+        log("INFO", f"All fragments received for '{name}', reassembling (total={frag_total})")
+        full_data = reassemble_fragments(name, frag_total)
 
         if full_data is None:                          # NEW — guard against gaps
-            log("WARN", f"Reassembly failed for '{buffer_name}', watchdog will retry")
+            log("WARN", f"Reassembly failed for '{name}', watchdog will retry")
             return None
 
         if waiting_for_name:
