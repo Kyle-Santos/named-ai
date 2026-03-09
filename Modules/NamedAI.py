@@ -407,7 +407,7 @@ def get_metrics():
 ##################
 NODE_NAME = None
 STORAGE_PATH = ""
-INTEREST_LIFETIME = 120  # seconds
+INTEREST_LIFETIME = 180  # seconds
 
 INTERFACES = {}  # port -> face, sock, port 
 

@@ -159,7 +159,7 @@ def processor_thread():
                                   SEND_QUEUE=SEND_QUEUE)
                     end_time = time.time()
                     NN.update_metrics("processing_time", end_time - start_time)
-                    if (parsed["frag_num"] == parsed["frag_total"] and NN.FRAG_BUFFER[parsed["name"]]) or parsed["frag_num"] is None:
+                    if (not NN.FRAG_BUFFER.get(parsed["name"])) or parsed["frag_num"] is None:
                         log("DEBUG", f"FINAL Parsing Time: {NN.METRICS['parsing_time'] * 1000:.4f} ms")
                         log("DEBUG", f"Finished processing Data '{parsed['name']}' in {NN.METRICS['processing_time'] * 1000:.4f} ms")
 
