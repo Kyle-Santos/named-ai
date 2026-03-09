@@ -1220,14 +1220,14 @@ def frag_watchdog(SEND_QUEUE):
     while True:
         time.sleep(1.0)
         now = time.time()
-
-        # Dynamic timeout based on retry count
-        dynamic_timeout = FRAG_TIMEOUT + (buf["retransmit_count"] * 2)
         
         for name in list(FRAG_BUFFER.keys()):
             buf = FRAG_BUFFER.get(name)
             if buf is None:
                 continue
+
+            # Dynamic timeout based on retry count
+            dynamic_timeout = FRAG_TIMEOUT + (buf["retransmit_count"] * 2)
 
             # Skip buffers that are still receiving data
             if (now - buf["last_updated"]) < dynamic_timeout:
