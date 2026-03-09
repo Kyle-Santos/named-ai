@@ -295,7 +295,6 @@ def append_metrics_to_csv(metrics):
                 "parsing_time",
                 "processing_time",
                 "send_time",
-                "functions"
             ])
 
         writer.writerow([
@@ -311,7 +310,6 @@ def append_metrics_to_csv(metrics):
             f"{metrics['parsing_time'] * 1000:.2f}",
             f"{metrics['processing_time'] * 1000:.2f}",
             f"{metrics['send_time'] * 1000:.2f}",
-            METRICS["functions"]
         ])
 
         # reset to 0
@@ -322,7 +320,6 @@ def append_metrics_to_csv(metrics):
         set_metrics("parsing_time", 0)
         set_metrics("processing_time", 0)
         set_metrics("send_time", 0)
-        set_metrics("functions", [])
 
 
 # metrics
@@ -1418,7 +1415,7 @@ def apply_function_pipeline(name, data, pit_entry):
             process_delay = (
                 METRICS["func_end_time"] - METRICS["func_start_time"]
             )
-            METRICS["functions"].append((func_name, round((METRICS['func_end_time'] - METRICS['func_start_time']) * 1000, 2)))
+            METRICS["functions"].append((func_name, f"{(METRICS['func_end_time'] - METRICS['func_start_time']) * 1000:.4f}"))
             log("DEBUG",
             f"Processing delay for  '{func_name}': '{process_delay*1000:.4f}' ms")
         except Exception as e:
