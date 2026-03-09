@@ -1,6 +1,7 @@
 # node_runner.py
 import os, sys, socket, json, time, threading, queue, argparse
 
+from networkx import config
 from torch import addr
 import NamedAI as NN
 import functions
@@ -35,6 +36,7 @@ def load_node_config(config_path: str, node_name: str):
     with open(config_path, "r") as f:
         config = json.load(f)
     node_config = next(n for n in config["nodes"] if n["name"] == node_name)
+    node_holder_function_mapping = next(n for n in config["nodes"] if n["name"] == "/dlsu")
 
     # NN.set_ip_addr(config.get("ip", "127.0.0.1"))
     
@@ -50,15 +52,10 @@ def load_node_config(config_path: str, node_name: str):
     # Initialize content store
     NN.initialize_content_store(node_config.get("storage", ""))
 
-    merged_functions_mapping = {}
-    for config_node in config.get("nodes", []):
-        node_functions_mapping = config_node.get("node_functions_mapping", {})
-        if isinstance(node_functions_mapping, dict):
-            merged_functions_mapping.update(node_functions_mapping)
-
-    NN.NODE_FUNCTIONS_MAPPING = merged_functions_mapping
-
-    functions_list = merged_functions_mapping.get(NN.NODE_NAME, [])
+    NN.NODE_FUNCTIONS_MAPPING = node_config.get("node_functions_mapping", {})
+    
+    functions_list = node_holder_function_mapping["node_functions_mapping"].get(NN.NODE_NAME, []) 
+    functions_list = []
     print(f"Functions for {NN.NODE_NAME}: {functions_list}")
     for func_name in functions_list:
         if func_name == "detect":

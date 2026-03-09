@@ -1233,14 +1233,6 @@ def frag_watchdog(SEND_QUEUE):
                     # This entry is waiting on a sub-interest (e.g., recognize → embedding).
                     # Don't retransmit — the orchestration pipeline is still in progress.
                     continue
-
-                # Also check if any OTHER PIT entry is waiting_for this name
-                is_dependency = any(
-                    e.get("waiting_for") == name
-                    for e in PIT.values()
-                )
-                if is_dependency:
-                    continue
             # ─────────────────────────────────────────────────────────────
 
             # Dynamic timeout based on retry count
