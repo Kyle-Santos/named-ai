@@ -1,4 +1,5 @@
 {
+    "com_mode": "socket",
     "ip": "127.0.0.1",
     "nodes": [
         {

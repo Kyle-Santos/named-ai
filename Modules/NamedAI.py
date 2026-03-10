@@ -32,95 +32,66 @@ def log(level, message, path=""):
 #########################
 # Communication Module  #
 #########################
-# IP_ADDR = "127.0.0.1"
-BAUD_RATE = 115200
-XBEE_PORT = None
-SERIAL_LOCK = threading.Lock()
-SENDING = threading.Event()
+from Communication import XBeeCom, SocketCom
 
-def create_serial_connection():
-    ser = serial.Serial(XBEE_PORT, BAUD_RATE, timeout=0, rtscts=True)
-    time.sleep(1)  # XBee warmup
-    return ser
+# Set this before calling create_interface()
+XBEE_PORT = None
+IP_ADDR = "127.0.0.1"
+com = None  # initialized by init_communication()
+
+def init_communication(mode="xbee", xbee_port=None, bind_ip="127.0.0.1"):
+    """
+    Initialize the communication backend.
+
+    Parameters
+    ----------
+    mode : str
+        "xbee"  – use XBee serial radio
+        "socket" – use UDP sockets (simulation / testing)
+    xbee_port : str | None
+        Serial port path for XBee (e.g. "/dev/tty.usbserial-XXX").
+        Required when mode == "xbee".
+    bind_ip : str
+        IP address to bind UDP sockets to. Only used when mode == "socket".
+    """
+    global com, XBEE_PORT, IP_ADDR
+    mode = mode.lower()
+
+    if mode == "xbee":
+        XBEE_PORT = xbee_port
+        com = XBeeCom(port=xbee_port)
+        log("INFO", f"Communication backend: XBee (port={xbee_port})")
+    elif mode == "socket":
+        IP_ADDR = bind_ip
+        com = SocketCom(bind_ip=bind_ip)
+        log("INFO", f"Communication backend: UDP Socket (bind_ip={bind_ip})")
+    else:
+        raise ValueError(f"Unknown communication mode '{mode}'. Use 'xbee' or 'socket'.")
+
+    return com
+
 
 def create_interface(interfaces):
-    """
-    Given an interfaces list from the config, create UDP sockets for each face.
-
-    Args:
-        interfaces (list): Example:
-            [
-                {"face": "face0", "port": 9010, "dst_port": 9000},
-                {"face": "face1", "port": 9011, "dst_port": 9020}
-            ]
-        bind_ip (str): IP to bind (default: localhost)
-
-    Returns:
-        dict: { face: { "sock": socket, "face": face, "port": port, "dst_port": dst_port } }
-    """
-    ser = create_serial_connection()
-    
-    for interface in interfaces:
-        face = interface["face"]
-        port = interface["port"] 
-        dst_port = interface["dst_port"] 
-
-        INTERFACES[face] = {
-            "sock": ser,          # keep key name 'sock' so rest of code works
-            "face": face,
-            "port": port,
-            "dst_port": dst_port
-        }
-
-        log("INFO", f"Opened XBee interface {face} on {port}")
-
+    """Create network interfaces using the active communication backend."""
+    global INTERFACES
+    if com is None:
+        raise RuntimeError("Communication not initialized. Call init_communication() first.")
+    INTERFACES = com.create_interface(interfaces)
     return INTERFACES
 
 
 def send_packet(sock, addr, packet_bytes):
-    """Send packet via XBee serial (addr unused but kept for compatibility)."""
-    try:
-        SENDING.set()
-        with SERIAL_LOCK:
-            sock.write(packet_bytes)  
-            sock.flush()
-        SENDING.clear()
-        log("DEBUG", f"Sent {len(packet_bytes)} bytes over XBee")
-    except Exception as e:
-        log("ERROR", f"XBee send failed: {e}")
+    """Send a packet using the active communication backend."""
+    if com is None:
+        raise RuntimeError("Communication not initialized.")
+    com.send_packet(sock, addr, packet_bytes)
 
-def receive_packet(sock, buf: list):
-    """
-    Receive raw bytes, buffer them, and return the next complete packet or None.
-    buf is a single-element list [b""] used as a mutable reference.
-    """
-    try:
-        if SENDING.is_set():
-            time.sleep(0.001)
-            return None
-        
-        with SERIAL_LOCK:
-            buf[0] +=  sock.read(1024)  # read available bytes (non-blocking due to timeout=0)
 
-        # Discard anything before the first preamble
-        start = buf[0].find(packetStruct.PREAMBLE)
-        if start == -1:
-            buf[0] = b""
-            return None
-        if start > 0:
-            # print(buf[0])
-            buf[0] = buf[0][start:]
-
-        # Return the first complete packet if one exists
-        end = buf[0].find(packetStruct.POSTAMBLE, len(packetStruct.PREAMBLE))
-        if end == -1:
-            return None
-        end += len(packetStruct.POSTAMBLE)
-        packet, buf[0] = buf[0][:end], buf[0][end:]
-        return packet
-
-    except TimeoutError:
-        return None
+def receive_packet(sock, buf):
+    """Receive a packet using the active communication backend."""
+    if com is None:
+        raise RuntimeError("Communication not initialized.")
+    return com.receive_packet(sock, buf)
 
 ##################
 # Parsing Module #

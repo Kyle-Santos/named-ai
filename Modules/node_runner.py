@@ -42,10 +42,21 @@ def load_node_config(config_path: str, node_name: str):
     NN.FIB = node_config.get("FIB", {})
     NN.FACES = [iface["face"] for iface in node_config.get("interfaces", [])]
 
+    # ── Initialize communication backend ──────────────────────────────
+    com_mode = config.get("com_mode", "socket")     # default to socket for safety
+    xbee_port = node_config.get("xbee_port", None)
+    bind_ip = config.get("ip", "127.0.0.1")
+
+    NN.init_communication(
+        mode=com_mode,
+        xbee_port=xbee_port,
+        bind_ip=bind_ip,
+    )
+    # ──────────────────────────────────────────────────────────────────
+
     # Apply per-node CS storage cap (MB) before initializing content store
     max_storage_mb = node_config.get("max_storage_mb", 10)
     NN.set_cs_max_storage(max_storage_mb)
-    NN.XBEE_PORT = node_config.get("xbee_port", None)
 
     # Initialize content store
     NN.initialize_content_store(node_config.get("storage", ""))
@@ -62,13 +73,13 @@ def load_node_config(config_path: str, node_name: str):
         if func_name == "recognize":
             functions.load_facebank()
 
-        if func_name == "insightface_embedding":
-             functions.load_insightface()
-             print("InsightFace model loaded.")
+        # if func_name == "insightface_embedding":
+        #      functions.load_insightface()
+        #      print("InsightFace model loaded.")
 
-        if func_name == "facenet_embedding":
-             functions.load_facenet()
-             print("Facenet model loaded.")
+        # if func_name == "facenet_embedding":
+        #      functions.load_facenet()
+        #      print("Facenet model loaded.")
 
         if func_name == "mfn_embedding":
              functions.load_mfn()
@@ -128,7 +139,6 @@ def processor_thread():
                 continue
             
             # You'll need to track face/sock/addr information
-            # This might require a separate metadata structure or per-face buffers
             msg = f"Processing {parsed['type']} packet \"{parsed['name']}\""
             # print(f"\n{msg}")
             # log("INFO", msg)
@@ -143,7 +153,7 @@ def processor_thread():
                 # Process based on packet type
                 if parsed["type"] == "interest":
                     start_time = time.time()
-                    NN.process_interest(parsed, addr=None, sock=sock, 
+                    NN.process_interest(parsed, addr=("127.0.0.1", parsed["src"]), sock=sock, 
                                       SEND_QUEUE=SEND_QUEUE, interface=face['face'])
                     end_time = time.time()
                     NN.update_metrics("processing_time", end_time - start_time)
@@ -197,8 +207,6 @@ def receiver(face, entry):
             packet = NN.receive_packet(sock, buf)
             if packet:
                 PACKET_QUEUE.put((packet, sock, face, entry))
-            # else:
-            #     time.sleep(0.001)  # avoid busy waiting if no complete packet
 
         except Exception as e:
             log("ERROR", f"[Receiver {face}] {e}")
@@ -214,7 +222,6 @@ def sender():
             start_time = time.time()
             for resp in response:
                 NN.send_packet(sock, addr, resp)
-                # sleep = len(resp) * 10 / 115200 * 1.2
                 time.sleep(0.02)  # slight delay to avoid UDP packet loss
             end_time = time.time()
             NN.update_metrics("send_time", end_time - start_time)
@@ -232,6 +239,7 @@ def sender():
                     "processing_time": NN.METRICS["processing_time"],
                     "send_time": NN.METRICS["send_time"]
                 })
+
         except Exception as e:
             msg = f"[Sender] Error: {e}"
             print(msg)
@@ -256,11 +264,21 @@ def run_node(node_name: str, config_path=CONFIG_PATH, gui_callback=None):
     threads = []
 
     # Start receiver threads
-    # for face, entry in interfaces.items():
-    face = list(interfaces.keys())[0]
-    t = threading.Thread(target=receiver, args=(face, interfaces[face]), daemon=False, name=f"Receiver-{face}")
-    t.start()
-    threads.append(t)
+    # XBee: all faces share one serial port → one receiver thread
+    # Socket: each face has its own UDP socket → one receiver thread per face
+    from Communication import XBeeCom
+    if isinstance(NN.com, XBeeCom):
+        face = list(interfaces.keys())[0]
+        t = threading.Thread(target=receiver, args=(face, interfaces[face]), daemon=False, name=f"Receiver-{face}")
+        t.start()
+        threads.append(t)
+        log("INFO", f"Started single receiver thread for XBee (face={face})")
+    else:
+        for face, entry in interfaces.items():
+            t = threading.Thread(target=receiver, args=(face, entry), daemon=False, name=f"Receiver-{face}")
+            t.start()
+            threads.append(t)
+            log("INFO", f"Started receiver thread for {face} (port={entry['port']})")
 
     # Start global processor thread - PROCESS ALL PACKETS
     t = threading.Thread(
@@ -851,7 +869,7 @@ if GUI_AVAILABLE:
                     print(f"[DEBUG] Raw Interest Packet: {interest_packet}")
                     print(f"[DEBUG] Packet Size: {len(interest_packet)} bytes")
                                 
-                    SEND_QUEUE.put((NN.INTERFACES["face0"]["sock"], ("", dest_port), [interest_packet]))
+                    SEND_QUEUE.put((NN.INTERFACES["face0"]["sock"], ("127.0.0.1", dest_port), [interest_packet]))
                     
                     # 10.0.0.106
                     # SEND_QUEUE.put((NN.INTERFACES["face0"]["sock"], ("10.0.0.106", dest_port), [interest_packet]))
