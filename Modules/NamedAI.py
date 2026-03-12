@@ -728,9 +728,11 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
             SEND_QUEUE.put((sock, addr, response))
             log("INFO", f"Served '{name}' from CS to {sock}")
 
-            sent_time = datetime.now()
-            METRICS["data_sent_time"] = sent_time.timestamp()
-            log("DEBUG", f"Data '{name}' sent at {sent_time.timestamp()} to {addr}")
+
+            if METRICS["data_sent_time"] == 0:
+                sent_time = datetime.now()
+                METRICS["data_sent_time"] = sent_time.timestamp()
+                log("DEBUG", f"Data '{name}' sent at {sent_time.timestamp()} to {addr}")
 
             update_metrics("data_packets_sent", len(response))
 
@@ -941,12 +943,6 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
 
                 # Non-fragmented data
                 else:
-                    # set_metrics("local_data_sent_time", time.time())
-                    # data_delay = (
-                    #     METRICS["local_data_sent_time"] - METRICS["local_data_rcv_time"]
-                    #     )
-                    # log("DEBUG",
-                    #     f"Data '{name}' processing delay: {data_delay * 1000:.4f} ms")
                     new_packet = modify_packet(raw_packet, face)
                     SEND_QUEUE.put((sock, PIT_MAPPING[face], [new_packet]))
                     log("INFO", f"Forwarding packet for {original_name} to {PIT_MAPPING[face]}")
@@ -974,13 +970,6 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
                 del FRAG_BUFFER[original_name] 
 
             # RTT
-            # set_metrics("local_data_sent_time", time.time())
-
-            # data_delay = (
-            #     METRICS["local_data_sent_time"] - METRICS["local_data_rcv_time"]
-            #     )
-            # log("DEBUG",
-            #     f"Data '{name}' processing delay: {data_delay * 1000:.4f} ms")
             pit_entry = PIT[original_name]
             rtt = time.time() - pit_entry["time"]
             METRICS["ave_RTT"] = 0.0
@@ -1020,8 +1009,9 @@ def process_data(packet, raw_packet, sock, SEND_QUEUE):
             # set_metrics("parsing_time", 0)
             # set_metrics("processing_time", 0)
             
-            receive_time = datetime.now()
-            METRICS["data_receive_time"] = receive_time.timestamp()
+            if METRICS["data_receive_time"] == 0:
+                receive_time = datetime.now()
+                METRICS["data_receive_time"] = receive_time.timestamp()
             
             """log("DEBUG",
                 f"sending_time for '{original_name}': {METRICS['send_time'] * 1000:.4f} milliseconds")
@@ -1317,13 +1307,14 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
         PIT.pop(waiting_for_name)
         cleanup_flags["delete_pit"] = True
 
-        sent_time = datetime.now()
-        METRICS["data_sent_time"] = sent_time.timestamp()
-        log(
-            "DEBUG",
-            # f"Data '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
-            f"Data '{original_name}' sent at {sent_time.timestamp()}"
-        )
+        if METRICS["data_sent_time"] == 0:
+            sent_time = datetime.now()
+            METRICS["data_sent_time"] = sent_time.timestamp()
+            log(
+                "DEBUG",
+                # f"Data '{name}' sent at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
+                f"Data '{original_name}' sent at {sent_time.timestamp()}"
+            )
 
         append_metrics_to_csv({
             "name": f"{original_name}",
