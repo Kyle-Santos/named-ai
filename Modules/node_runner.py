@@ -73,7 +73,7 @@ def load_node_config(config_path: str, node_name: str):
         if func_name == "recognize":
             functions.load_facebank()
 
-        if func_name == "insightface_embedding":
+        if func_name == "insightface":
             functions.load_insightface()
             print("InsightFace model loaded.")
 

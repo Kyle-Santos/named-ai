@@ -186,7 +186,7 @@ def orchestrate(name: str, model, PIT, functions_mapping) -> str:
     CHOSEN_MODEL = model
 
     model_pipelines = {
-        "insightface": ["resize_insightface","normalize", "insightface_embedding"],
+        "insightface": ["resize_insightface","normalize", "insightface"],
         "facenet": ["detect", "resize_facenet", "facenet_embedding"],
         "mobilefacenet": ["detect","resize_mfn", "grayscale", "mfn_embedding"],
     }
@@ -340,6 +340,7 @@ def recognize(data_bytes: bytes):
             # Try numpy binary format (Option 2)
             buf = BytesIO(data_bytes)
             embedding = np.load(buf)
+            
         
         if embedding is None or len(embedding) == 0:
             return json.dumps({"label": "No embedding", "confidence": 0.0}).encode('utf-8')

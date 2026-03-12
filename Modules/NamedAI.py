@@ -234,7 +234,7 @@ def _forward_retransmit_interest(name, base_name, incoming_interface,
 
     src_port = INTERFACES[forward_face]["port"]
     pkt = build_interest_packet(name, dest_port, src_port)  # full name with [x:y]
-    SEND_QUEUE.put((INTERFACES[forward_face]["sock"], None, [pkt]))
+    SEND_QUEUE.put((INTERFACES[forward_face]["sock"], ("127.0.0.1", dest_port), [pkt]))
     log("SUCCESS",
         f"[RetransmitFwd] Forwarded '{name}' via {forward_face} → port {dest_port}")
     update_metrics("interests_sent")
@@ -652,7 +652,7 @@ def get_PIT_entry(name):
 #####################
 # Processing Module #
 #####################
-PAYLOAD_SIZE = 99
+PAYLOAD_SIZE = 100
 
 def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     """Process Interest: check CS or forward."""
@@ -1412,7 +1412,10 @@ def build_data_packet(name, data, dest_port=None, src_port=None):
     src_port = src_port - 9000 if src_port is not None else INTERFACES["face0"]["port"] - 9000
     dst_port = dest_port - 9000 if dest_port is not None else INTERFACES["face0"]["dst_port"] - 9000
     # log("DEBUG", f"Building data packet with src_port={src_port}, dest_port={dst_port}")
-    
+    if NODE_NAME == "/dlsu/velasco" :
+        log("DEBUG",str(data_bytes))
+
+
     total_frags = len(fragments)
     for idx, frag in enumerate(fragments, start=1):
         # only add [x:y] if more than one fragment
@@ -1433,7 +1436,6 @@ def build_data_packet(name, data, dest_port=None, src_port=None):
         packet = packetStruct.PREAMBLE + core + checksum + packetStruct.POSTAMBLE
         packets.append(packet)
         log("SUCCESS", f"Built data packet for '{name}' fragment {idx}/{total_frags} (size={len(packet)} bytes) (namesize={len(frag_name)} bytes, payload={len(frag)} bytes)")
-
     return packets
 
 
@@ -1444,4 +1446,6 @@ def fragment_data(data_bytes, max_payload=PAYLOAD_SIZE):
     """
     num_frags = str(len(data_bytes) // max_payload) if len(data_bytes) > max_payload else ""
     max_payload = max_payload - (2 * len(num_frags))
+    if NODE_NAME == "/dlsu/velasco" :
+        log("DEBUG",str(max_payload))
     return [data_bytes[i:i+max_payload] for i in range(0, len(data_bytes), max_payload)]

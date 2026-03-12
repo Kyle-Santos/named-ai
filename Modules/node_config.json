@@ -35,7 +35,7 @@
                 "/dlsu": ["orchestrate", "recognize"],
                 "/dlsu/goks": ["detect", "resize_facenet", "resize_mfn", "resize_insightface"],
                 "/dlsu/andrew": ["mfn_embedding", "grayscale"],
-                "/dlsu/velasco": ["insightface_embedding", "facenet_embedding", "normalize"]
+                "/dlsu/velasco": ["insightface", "facenet_embedding", "normalize"]
             },
             "xbee_port": "/dev/tty.usbserial-AB0JV2MF"
         },
