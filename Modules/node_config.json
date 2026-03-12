@@ -33,7 +33,9 @@
             "max_storage_mb": 10,
             "node_functions_mapping": {
                 "/dlsu": ["orchestrate", "recognize"],
-                "/dlsu/goks": ["detect", "resize_facenet", "resize_mfn", "resize_insightface", "mfn_embedding", "grayscale", "insightface_embedding", "facenet_embedding", "normalize"]
+                "/dlsu/goks": ["detect", "resize_facenet", "resize_mfn", "resize_insightface"],
+                "/dlsu/andrew": ["mfn_embedding", "grayscale"],
+                "/dlsu/velasco": ["insightface_embedding", "facenet_embedding", "normalize"]
             },
             "xbee_port": "/dev/tty.usbserial-AB0JV2MF"
         },

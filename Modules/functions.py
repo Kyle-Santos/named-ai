@@ -14,7 +14,7 @@ from io import BytesIO
 import cv2
 import torch
 import json
-# from insightface.app import FaceAnalysis
+from insightface.app import FaceAnalysis
 
 #for facenet
 import joblib
@@ -196,7 +196,7 @@ def orchestrate(name: str, model, PIT, functions_mapping) -> str:
     # Tier 2: andrew & velasco (same priority)
     priority_tiers = [
         ["/dlsu/goks"],            # Tier 1 (highest)
-        # ["/dlsu/andrew", "/dlsu/velasco"],  # Tier 2 (same priority)
+        ["/dlsu/andrew", "/dlsu/velasco"],  # Tier 2 (same priority)
     ]
 
     if model not in model_pipelines:

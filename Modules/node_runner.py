@@ -73,13 +73,13 @@ def load_node_config(config_path: str, node_name: str):
         if func_name == "recognize":
             functions.load_facebank()
 
-        # if func_name == "insightface_embedding":
-        #      functions.load_insightface()
-        #      print("InsightFace model loaded.")
+        if func_name == "insightface_embedding":
+            functions.load_insightface()
+            print("InsightFace model loaded.")
 
-        # if func_name == "facenet_embedding":
-        #      functions.load_facenet()
-        #      print("Facenet model loaded.")
+        if func_name == "facenet_embedding":
+            functions.load_facenet()
+            print("Facenet model loaded.")
 
         if func_name == "mfn_embedding":
              functions.load_mfn()
@@ -168,7 +168,7 @@ def processor_thread():
                                   SEND_QUEUE=SEND_QUEUE)
                     end_time = time.time()
                     NN.update_metrics("processing_time", end_time - start_time)
-                    if (not NN.FRAG_BUFFER.get(parsed["name"])) or parsed["frag_num"] is None:
+                    if (not NN.PIT) or parsed["frag_num"] is None:
                         log("DEBUG", f"FINAL Parsing Time: {NN.METRICS['parsing_time'] * 1000:.4f} ms")
                         log("DEBUG", f"Finished processing Data '{parsed['name']}' in {NN.METRICS['processing_time'] * 1000:.4f} ms")
 
@@ -219,11 +219,13 @@ def sender():
 
         try:
             sock, addr, response = task
+            log("DEBUG", f"sock '{sock}', addr: '{addr}', response: '{response}'")
             start_time = time.time()
             for resp in response:
                 NN.send_packet(sock, addr, resp)
-                time.sleep(0.02)  # slight delay to avoid UDP packet loss
+                time.sleep(0.002)  # slight delay to avoid UDP packet loss
             end_time = time.time()
+            
             NN.update_metrics("send_time", end_time - start_time)
             # log("DEBUG", f"Sent response to {addr} in {NN.METRICS['send_time'] * 1000:.4f} ms")
 

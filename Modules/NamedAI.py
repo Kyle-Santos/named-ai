@@ -266,6 +266,7 @@ def append_metrics_to_csv(metrics):
                 "parsing_time",
                 "processing_time",
                 "send_time",
+                "functions"
             ])
 
         writer.writerow([
@@ -281,6 +282,7 @@ def append_metrics_to_csv(metrics):
             f"{metrics['parsing_time'] * 1000:.2f}",
             f"{metrics['processing_time'] * 1000:.2f}",
             f"{metrics['send_time'] * 1000:.2f}",
+            METRICS["functions"]
         ])
 
         # reset to 0
@@ -291,8 +293,8 @@ def append_metrics_to_csv(metrics):
         set_metrics("parsing_time", 0)
         set_metrics("processing_time", 0)
         set_metrics("send_time", 0)
-
-
+        set_metrics("functions", [])
+        
 # metrics
 METRICS = {
     "interests_sent": 0,
@@ -1348,14 +1350,16 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
         return processed_data
         
     # Send processed results back
-
     for forward_face in pit_entry["interface"]:
         if forward_face is not None and forward_face in INTERFACES:
+            dataX = build_data_packet(name, processed_data, INTERFACES[forward_face]["dst_port"], INTERFACES[forward_face]["port"])
             SEND_QUEUE.put((
                 INTERFACES[forward_face]["sock"],
                 PIT_MAPPING.get(forward_face),
-                build_data_packet(name, processed_data, INTERFACES[forward_face]["dst_port"], INTERFACES[forward_face]["port"])
+                dataX
             ))
+            log("DEBUG", f"'{dataX}'")
+        
     
     update_metrics("data_packets_sent", len(build_data_packet(name, processed_data)))
     log("DEBUG", f"Processed In-Network Function '{name}' and sent to {pit_entry['interface']}")
