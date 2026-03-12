@@ -1232,7 +1232,7 @@ def frag_watchdog(SEND_QUEUE):
                 # Re-request the specific fragment using the [x:y] notation
                 frag_name = f"{name}[{frag_idx}:{buf['expected']}]"
                 pkt = build_interest_packet(frag_name, dest_port, src_port)
-                SEND_QUEUE.put((INTERFACES[forward_face]["sock"], None, [pkt]))
+                SEND_QUEUE.put((INTERFACES[forward_face]["sock"], ("127.0.0.1", dest_port), [pkt]))
                 log("INFO", f"[FragWatchdog] Re-issued interest for '{frag_name}'")
 
 
@@ -1304,7 +1304,7 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
         response = build_data_packet(original_name, processed_data)
         
         forward_face = pit_entry["interface"].copy().pop()  # get the single face to forward to
-        SEND_QUEUE.put((INTERFACES["face0"]["sock"],"",response))
+        SEND_QUEUE.put((INTERFACES["face0"]["sock"],("127.0.0.1",INTERFACES["face0"]["dst_port"]),response))
 
         PIT.pop(waiting_for_name)
         cleanup_flags["delete_pit"] = True
