@@ -1332,13 +1332,11 @@ def process_nfn_request(name, waiting_for_name, full_data, pit_entry,
     # Send processed results back
     for forward_face in pit_entry["interface"]:
         if forward_face is not None and forward_face in INTERFACES:
-            dataX = build_data_packet(name, processed_data, INTERFACES[forward_face]["dst_port"], INTERFACES[forward_face]["port"])
             SEND_QUEUE.put((
                 INTERFACES[forward_face]["sock"],
                 PIT_MAPPING.get(forward_face),
-                dataX
+                build_data_packet(name, processed_data, INTERFACES[forward_face]["dst_port"], INTERFACES[forward_face]["port"])
             ))
-            log("DEBUG", f"'{dataX}'")
         
     
     update_metrics("data_packets_sent", len(build_data_packet(name, processed_data)))
@@ -1412,8 +1410,6 @@ def build_data_packet(name, data, dest_port=None, src_port=None):
     src_port = src_port - 9000 if src_port is not None else INTERFACES["face0"]["port"] - 9000
     dst_port = dest_port - 9000 if dest_port is not None else INTERFACES["face0"]["dst_port"] - 9000
     # log("DEBUG", f"Building data packet with src_port={src_port}, dest_port={dst_port}")
-    if NODE_NAME == "/dlsu/velasco" :
-        log("DEBUG",str(data_bytes))
 
 
     total_frags = len(fragments)
@@ -1446,6 +1442,4 @@ def fragment_data(data_bytes, max_payload=PAYLOAD_SIZE):
     """
     num_frags = str(len(data_bytes) // max_payload) if len(data_bytes) > max_payload else ""
     max_payload = max_payload - (2 * len(num_frags))
-    if NODE_NAME == "/dlsu/velasco" :
-        log("DEBUG",str(max_payload))
     return [data_bytes[i:i+max_payload] for i in range(0, len(data_bytes), max_payload)]

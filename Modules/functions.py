@@ -49,7 +49,7 @@ def get_function(func_name: str):
         "grayscale": grayscale,
         "orchestrate": orchestrate,
         "normalize": normalize,
-        "insightface_embedding": insightface_embedding,
+        "insightface": insightface_embedding,
         "facenet_embedding": facenet_embedding,
         "mfn_embedding": mfn_embedding,
         "recognize": recognize,

@@ -223,7 +223,7 @@ def sender():
             start_time = time.time()
             for resp in response:
                 NN.send_packet(sock, addr, resp)
-                time.sleep(0.002)  # slight delay to avoid UDP packet loss
+                time.sleep(0.02)  # slight delay to avoid UDP packet loss
             end_time = time.time()
             
             NN.update_metrics("send_time", end_time - start_time)
