@@ -667,17 +667,7 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
     cs_lookup_name = base_name if is_frag_retransmit else name
     # ──────────────────────────────────────────────────────────────────────
 
-    sent_time = datetime.now()
-    METRICS["interest_receive_time"] = sent_time.timestamp() # for easier readability in CSV
-    log(
-        "DEBUG",
-        f"Interest '{name}' received at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
-        # f"Interest '{name}' received at {sent_time.timestamp()}, serving from CS"
-    )
-    
-    # First check Content Store
-    cached_data = lookup_content(cs_lookup_name)
-    if cached_data:
+    if METRICS["interest_receive_time"] == 0:
         sent_time = datetime.now()
         METRICS["interest_receive_time"] = sent_time.timestamp() # for easier readability in CSV
         log(
@@ -685,7 +675,10 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
             f"Interest '{name}' received at {sent_time.strftime('%H:%M:%S.%f')}"  # HH:MM:SS.mmm
             # f"Interest '{name}' received at {sent_time.timestamp()}, serving from CS"
         )
-
+    
+    # First check Content Store
+    cached_data = lookup_content(cs_lookup_name)
+    if cached_data:
         update_CS_timestamp(name)
         data_bytes = cached_data["data"]
         
@@ -730,10 +723,6 @@ def process_interest(packet, addr, sock, SEND_QUEUE, interface):
 
         else:
             # ── Normal CS hit: send all fragments as before ────────────────
-            sent_time = datetime.now()
-            METRICS["interest_receive_time"] = sent_time.timestamp()
-            log("DEBUG", f"Interest '{name}' received at {sent_time.strftime('%H:%M:%S.%f')}")
-
             response = build_data_packet(name, data_bytes, packet["src"], packet["dst"])
             update_metrics("data_total_sent")
             SEND_QUEUE.put((sock, addr, response))
