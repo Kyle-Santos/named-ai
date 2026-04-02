@@ -1,6 +1,34 @@
 # named-ai
 
-A Named Networking–based protocol for handling in-network AI functions.
+A Named Networking–based protocol for distributing and executing in-network AI/ML functions.
+
+---
+
+## 📌 Overview
+
+`named-ai` implements a **Named Networking (NN)**-inspired system where nodes can:
+- Retrieve content via hierarchical naming
+- Execute **in-network AI/ML functions**
+- Forward and process requests dynamically
+
+It supports distributed execution of image processing and face recognition pipelines across nodes.
+
+---
+
+## ⚙️ Requirements
+
+- Python 3.8+
+- OS: Windows or macOS (insightface is not supported)
+
+---
+
+### Python Dependencies
+
+Install required libraries:
+
+```bash
+pip install -r requirements.txt
+```
 
 ---
 
@@ -33,76 +61,59 @@ python mac_run_nodes.py
 
 ### Send an Interest Packet
 
-send interest /dlsu/recognize(insightface(/dlsu/goks/cam/capture11.jpg))
+#### Simple Content Retrieval
+```bash
+send interest /dlsu/goks/cam/capture8.jpg
 
-send interest /dlsu/recognize(facenet(/dlsu/goks/cam/capture11.jpg))
+send interest /3.txt
 
-send interest /dlsu/recognize(mobilefacenet(/dlsu/goks/cam/capture1.jpg))
+send interest /14.jpg
+```
 
-send interest /dlsu/goks/cam/recognize(mobilefacenet(/dlsu/goks/cam/capture8.jpg))
-
+#### With In-Network Functions
+```bash
 send interest /dlsu/recognize(mobilefacenet(/14.jpg))
 
 send interest /dlsu/recognize(insightface(/14.jpg))
 
-send interest /dlsu/goks/cam/capture8.jpg
+send interest /dlsu/recognize(facenet(/14.jpg))
 
-send interest /txt7.txt
+send interest /dlsu/andrew/grayscale(/14.jpg)
 
-send interest /14.jpg
+send interest /dlsu/goks/resize_mfn(/14.jpg)
 
-send interest /txt7.txt
+send interest /dlsu/recognize(insightface(/dlsu/goks/cam/capture14.jpg))
 
-### Lower Versions
+send interest /dlsu/recognize(facenet(/dlsu/goks/cam/capture14.jpg))
 
-send interest /dlsu/goks/cam/capture8.jpg
+send interest /dlsu/recognize(mobilefacenet(/dlsu/goks/cam/capture14.jpg))
+```
 
-send interest /dlsu/goks/cam/hello.txt
-
-send interest /dlsu/grayscale(/dlsu/goks/cam/capture8.jpg)
-
-send interest /dlsu/grayscale(/dlsu/goks/detect(/dlsu/goks/cam/capture1.jpg))
-
-send interest /dlsu/goks/resize_facenet(/14.jpg)
-
-send interest /dlsu/andrew/grayscale(/dlsu/goks/resize(detect(/dlsu/goks/cam/capture1.jpg)))
-
-send interest /dlsu/velasco/normalize(/dlsu/andrew/grayscale(/dlsu/goks/resize(detect(/dlsu/goks/cam/capture1.jpg))))
+---
 
 ## ML Pipeline
 
-get image -> detect -> grayscale (if applicable) -> resize -> normalize -> convert to tensor/model input -> Extract Embeddings -> Face Recognition
+- get image -> detect -> grayscale (if applicable) -> resize -> normalize (if applicable) -> convert to tensor/model input -> Extract Embeddings -> Face Recognition
 
-interest_name="/dlsu/goks/cam/capture8.jpg"
-interest_name="/dlsu/goks/detect(/dlsu/goks/cam/capture8.jpg)"
 
 ## ML Model Specifications
 
 ### ArcFace/InsightFace
 
-Minimum size of images must be 512px x 512px
+- Minimum size of images must be 640px x 640px
+- Will only accept non-grayscale images (model is trained on RGB images)
+- **libraries**: insightface onnxruntime opencv-python
 
-Will only accept non-grayscale images (model is trained on RGB images)
-
-#### libraries
-
-insightface
-onnxruntime
-opencv-python
+---
 
 ### Facenet
 
-#### libraries
+- Minimum size of images must be 160px x 160px
+- **libraries**: facenet-pytorch mtcnn torch torchvision
 
-facenet-pytorch
-mtcnn
-torch
-torchvision
+---
 
-# MobileFaceNet
+### MobileFaceNet
 
-#### libraries
-
-torch
-torchvision
-torchaudio
+- Minimum size of images must be 112px x 112px
+- **libraries**: torch torchvision torchaudio

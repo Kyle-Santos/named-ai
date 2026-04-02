@@ -1241,8 +1241,6 @@ def save_data_to_file(name, data_bytes):
     log("INFO", f"Saving processed output for '{name}' to CS")
     if "recognize" in name:
         filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_')) + ".txt"
-    elif name.endswith(".txt"):
-        filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_'))
     elif "embedding" in name:
         filename = os.path.join(STORAGE_PATH, name[1:].replace('/', '_')) + ".npy"
     else:
